@@ -570,13 +570,25 @@ function canonicalizeSqlQuery(query: string) {
     .toLowerCase()
     .replace(/`/g, "")
     .replace(/;+/g, "")
+    .trim();
+}
+
+function normalizeSqlAnswerForComparison(query: string) {
+  const typeLengthPattern =
+    /\b(varchar|char|varbinary|binary|decimal|numeric|float|double|tinyint|smallint|mediumint|int|integer|bigint)\s*\(\s*\d+(?:\s*,\s*\d+)?\s*\)/g;
+
+  return canonicalizeSqlQuery(query)
+    .replace(typeLengthPattern, "$1")
     .replace(/\s+/g, "")
     .replace(/column/g, "")
     .replace(/primary_key_auto_increment/g, "primary_key_auto_increment")
     .replace(/auto_increment_primary_key/g, "primary_key_auto_increment")
     .replace(/primarykeyauto_increment/g, "primary_key_auto_increment")
-    .replace(/auto_incrementprimarykey/g, "primary_key_auto_increment")
-    .trim();
+    .replace(/auto_incrementprimarykey/g, "primary_key_auto_increment");
+}
+
+function matchesMysqlQuery(expected: string, actual: string) {
+  return normalizeSqlAnswerForComparison(expected) === normalizeSqlAnswerForComparison(actual);
 }
 
 function buildQueryHintSnippet(answer: string) {
@@ -1108,6 +1120,7 @@ export default function Home() {
         setQueryDraft("");
         setFeedback(null);
         setWrongAttempts(0);
+        setAnswerRevealUsed(false);
       }
       advanceTimerRef.current = null;
     }, 950);
@@ -1333,9 +1346,8 @@ export default function Home() {
       return;
     }
 
-    const normalizedDraft = canonicalizeSqlQuery(queryDraft);
-    const isCorrect = currentMysqlStep.acceptedAnswers.some(
-      (answer) => canonicalizeSqlQuery(answer) === normalizedDraft,
+    const isCorrect = currentMysqlStep.acceptedAnswers.some((answer) =>
+      matchesMysqlQuery(answer, queryDraft),
     );
     const reward = calculateQuestionCredits(15, wrongAttempts, answerRevealUsed);
 
@@ -1366,6 +1378,7 @@ export default function Home() {
     setCredits((value) => value + earned);
     setStreak(nextStreak);
     setWrongAttempts(0);
+    setAnswerRevealUsed(false);
     setFeedback({
       kind: answerRevealUsed ? "revealed" : "correct",
       message: answerRevealUsed
