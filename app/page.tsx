@@ -1,6 +1,6 @@
 'use client';
 
-import {useEffect, useRef, useState, type FormEvent} from "react";
+import {useEffect, useRef, useState, type CSSProperties, type FormEvent} from "react";
 import {Toaster, toast} from "react-hot-toast";
 import {MYSQL_COURSE, type MysqlCourse} from "./mysql-course";
 
@@ -54,6 +54,12 @@ type CategoryConfig = {
 type FeedbackState = {
   kind: "correct" | "wrong" | "revealed";
   message: string;
+};
+
+type FireworksState = {
+  id: number;
+  mainCount: number;
+  littleCount: number;
 };
 
 type MysqlProgressSnapshot = {
@@ -877,6 +883,260 @@ function ChoiceButton({
   );
 }
 
+type FireworkSpark = {
+  x: number;
+  y: number;
+  size: number;
+  delay: number;
+  duration: number;
+  color: string;
+  angle: number;
+};
+
+function makeSeededRandom(seed: number) {
+  let value = seed % 2147483647;
+
+  if (value <= 0) {
+    value += 2147483646;
+  }
+
+  return () => {
+    value = (value * 48271) % 2147483647;
+    return (value - 1) / 2147483646;
+  };
+}
+
+function buildFireworksState(wrongAttempts: number, revealUsed: boolean): FireworksState | null {
+  if (revealUsed) {
+    return null;
+  }
+
+  if (wrongAttempts === 0) {
+    return {
+      id: Date.now(),
+      mainCount: 3,
+      littleCount: 3,
+    };
+  }
+
+  if (wrongAttempts === 1) {
+    return {
+      id: Date.now(),
+      mainCount: 2,
+      littleCount: 3,
+    };
+  }
+
+  if (wrongAttempts === 2) {
+    return {
+      id: Date.now(),
+      mainCount: 0,
+      littleCount: 3,
+    };
+  }
+
+  return null;
+}
+
+function buildFireworkSparks(seed: number, count: number, colors: string[]) {
+  const random = makeSeededRandom(seed);
+
+  return Array.from({length: count}, (_, index) => {
+    const angle = random() * Math.PI * 2;
+    const distance = 54 + random() * 84;
+    return {
+      x: Math.cos(angle) * distance,
+      y: Math.sin(angle) * distance,
+      size: 2 + random() * 3.5,
+      delay: random() * 0.35 + index * 0.006,
+      duration: 1100 + random() * 700,
+      color: colors[index % colors.length],
+      angle,
+    } satisfies FireworkSpark;
+  });
+}
+
+type FireworkPoint = {
+  left: string;
+  top: string;
+  scale: number;
+  sparkCount: number;
+  seedOffset: number;
+  coreClass: string;
+  ringClass: string;
+  glowClass: string;
+  palette: string[];
+};
+
+function FireworksCelebration({burst}: {burst: FireworksState | null}) {
+  if (!burst) {
+    return null;
+  }
+
+  const mainSparksPalette = ["#22d3ee", "#38bdf8", "#a855f7", "#f472b6"];
+  const rightMainPalette = ["#f472b6", "#fb7185", "#f59e0b", "#f97316"];
+  const topMainPalette = ["#f8fafc", "#22d3ee", "#e879f9", "#fde047"];
+  const littlePalette = ["#67e8f9", "#c084fc", "#f9a8d4", "#fde68a"];
+
+  const mainPoints: FireworkPoint[] = [
+    {
+      left: "11vw",
+      top: "22vh",
+      scale: 1,
+      sparkCount: 18,
+      seedOffset: 11,
+      coreClass: "firework-core-left",
+      ringClass: "firework-ring-left",
+      glowClass: "firework-glow-left",
+      palette: mainSparksPalette,
+    },
+    {
+      left: "89vw",
+      top: "20vh",
+      scale: 1,
+      sparkCount: 18,
+      seedOffset: 51,
+      coreClass: "firework-core-right",
+      ringClass: "firework-ring-right",
+      glowClass: "firework-glow-right",
+      palette: rightMainPalette,
+    },
+    {
+      left: "50%",
+      top: "12vh",
+      scale: 1.05,
+      sparkCount: 18,
+      seedOffset: 31,
+      coreClass: "firework-core-top",
+      ringClass: "firework-ring-top",
+      glowClass: "firework-glow-top",
+      palette: topMainPalette,
+    },
+  ];
+
+  const littlePoints: FireworkPoint[] = [
+    {
+      left: "8vw",
+      top: "57vh",
+      scale: 0.52,
+      sparkCount: 10,
+      seedOffset: 91,
+      coreClass: "firework-core-left",
+      ringClass: "firework-ring-left",
+      glowClass: "firework-glow-left",
+      palette: littlePalette,
+    },
+    {
+      left: "50%",
+      top: "33vh",
+      scale: 0.46,
+      sparkCount: 10,
+      seedOffset: 111,
+      coreClass: "firework-core-top",
+      ringClass: "firework-ring-top",
+      glowClass: "firework-glow-top",
+      palette: littlePalette,
+    },
+    {
+      left: "92vw",
+      top: "58vh",
+      scale: 0.52,
+      sparkCount: 10,
+      seedOffset: 131,
+      coreClass: "firework-core-right",
+      ringClass: "firework-ring-right",
+      glowClass: "firework-glow-right",
+      palette: littlePalette,
+    },
+  ];
+
+  return (
+    <div aria-hidden="true" className="pointer-events-none fixed inset-0 z-50 overflow-hidden">
+      <div className="firework-night-glow" />
+
+      {mainPoints.slice(0, burst.mainCount).map((point) => {
+        const sparks = buildFireworkSparks(
+          burst.id + point.seedOffset,
+          point.sparkCount,
+          point.palette,
+        );
+
+        return (
+          <div
+            key={`main-${point.seedOffset}`}
+            className="firework-burst"
+            style={{
+              left: point.left,
+              top: point.top,
+              transform: `translate(-50%, -50%) scale(${point.scale})`,
+            }}
+          >
+            <span className={`firework-glow ${point.glowClass}`} />
+            <span className={`firework-core ${point.coreClass}`} />
+            <span className={`firework-ring ${point.ringClass}`} />
+            {sparks.map((spark, sparkIndex) => (
+              <span
+                key={`main-${point.seedOffset}-${sparkIndex}`}
+                className="firework-spark"
+                style={
+                  {
+                    "--spark-x": `${spark.x}px`,
+                    "--spark-y": `${spark.y}px`,
+                    "--spark-size": `${spark.size}px`,
+                    "--spark-delay": `${spark.delay}s`,
+                    "--spark-duration": `${spark.duration}ms`,
+                    "--spark-color": spark.color,
+                    "--spark-angle": `${spark.angle}rad`,
+                  } as CSSProperties
+                }
+              />
+            ))}
+          </div>
+        );
+      })}
+
+      {littlePoints.slice(0, burst.littleCount).map((point) => {
+        const sparks = buildFireworkSparks(burst.id + point.seedOffset, point.sparkCount, littlePalette);
+
+        return (
+          <div
+            key={`little-${point.seedOffset}`}
+            className="firework-burst firework-burst-little"
+            style={{
+              left: point.left,
+              top: point.top,
+              transform: `translate(-50%, -50%) scale(${point.scale})`,
+            }}
+          >
+            <span className={`firework-glow ${point.glowClass}`} />
+            <span className={`firework-core ${point.coreClass}`} />
+            <span className={`firework-ring ${point.ringClass}`} />
+            {sparks.map((spark, sparkIndex) => (
+              <span
+                key={`little-${point.seedOffset}-${sparkIndex}`}
+                className="firework-spark"
+                style={
+                  {
+                    "--spark-x": `${spark.x}px`,
+                    "--spark-y": `${spark.y}px`,
+                    "--spark-size": `${spark.size}px`,
+                    "--spark-delay": `${spark.delay}s`,
+                    "--spark-duration": `${spark.duration}ms`,
+                    "--spark-color": spark.color,
+                    "--spark-angle": `${spark.angle}rad`,
+                  } as CSSProperties
+                }
+              />
+            ))}
+          </div>
+        );
+      })}
+
+      <span className="sr-only">Celebration fireworks for a solved answer.</span>
+    </div>
+  );
+}
+
 export default function Home() {
   const [selectedCategory, setSelectedCategory] = useState<CategoryKey | null>(null);
   const [selectedSubPath, setSelectedSubPath] = useState<SubPathKey | null>(null);
@@ -891,6 +1151,7 @@ export default function Home() {
   const [selectedChoice, setSelectedChoice] = useState<number | null>(null);
   const [queryDraft, setQueryDraft] = useState("");
   const [feedback, setFeedback] = useState<FeedbackState | null>(null);
+  const [fireworksBurst, setFireworksBurst] = useState<FireworksState | null>(null);
   const [credits, setCredits] = useState(0);
   const [streak, setStreak] = useState(0);
   const [wrongAttempts, setWrongAttempts] = useState(0);
@@ -910,8 +1171,27 @@ export default function Home() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!fireworksBurst) {
+      return;
+    }
+
+    const dismissTimer = window.setTimeout(() => {
+      setFireworksBurst(null);
+    }, 2400);
+
+    return () => {
+      window.clearTimeout(dismissTimer);
+    };
+  }, [fireworksBurst]);
+
+  const triggerFireworks = (attemptCount: number, revealUsed: boolean) => {
+    setFireworksBurst(buildFireworksState(attemptCount, revealUsed));
+  };
+
   const resetProgress = () => {
     clearAdvanceTimer();
+    setFireworksBurst(null);
     setQuestionIndex(0);
     setMysqlStepIndex(0);
     setMysqlStepOrder([]);
@@ -933,6 +1213,7 @@ export default function Home() {
     const nextOptionOrders = buildMysqlOptionOrders(MYSQL_COURSE, nextStepOrder);
 
     clearAdvanceTimer();
+    setFireworksBurst(null);
     setMysqlStepOrder(nextStepOrder);
     setMysqlOptionOrders(nextOptionOrders);
     setMysqlStepIndex(0);
@@ -951,6 +1232,7 @@ export default function Home() {
 
   const continueMysqlSession = (snapshot: MysqlProgressSnapshot) => {
     clearAdvanceTimer();
+    setFireworksBurst(null);
     setMysqlStepOrder(snapshot.stepOrder);
     setMysqlOptionOrders(snapshot.optionOrders);
     setMysqlStepIndex(Math.min(snapshot.mysqlStepIndex, snapshot.stepOrder.length - 1));
@@ -988,6 +1270,7 @@ export default function Home() {
       category,
       null,
     );
+    setFireworksBurst(null);
     toast.success(`You chose ${LEARNING_TRACKS[category].title}. Now pick a database.`);
   };
 
@@ -1048,6 +1331,7 @@ export default function Home() {
       null,
       null,
     );
+    setFireworksBurst(null);
   };
 
   const goBackToSubPaths = () => {
@@ -1231,6 +1515,7 @@ export default function Home() {
                 ? `Correct. +${earned} credits.`
                 : `Correct. +${earned} credits.`,
         );
+        triggerFireworks(wrongAttempts, answerRevealUsed);
         advanceMysqlStep();
         return;
       }
@@ -1295,6 +1580,7 @@ export default function Home() {
                 ? `Correct. +${earned} credits.`
                 : `Correct. +${earned} credits.`,
         );
+        triggerFireworks(wrongAttempts, answerRevealUsed);
 
         clearAdvanceTimer();
         advanceTimerRef.current = window.setTimeout(() => {
@@ -1398,6 +1684,7 @@ export default function Home() {
             ? `Created. +${earned} credits.`
             : `Created. +${earned} credits.`,
     );
+    triggerFireworks(wrongAttempts, answerRevealUsed);
 
     clearAdvanceTimer();
     advanceTimerRef.current = window.setTimeout(() => {
@@ -1449,6 +1736,7 @@ export default function Home() {
 
   return (
     <>
+      <FireworksCelebration burst={fireworksBurst} />
       <Toaster
         position="top-right"
         toastOptions={{
