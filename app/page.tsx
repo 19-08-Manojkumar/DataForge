@@ -1,8 +1,16 @@
 'use client';
 
-import {useEffect, useRef, useState, type CSSProperties, type FormEvent} from "react";
+import {useCallback, useEffect, useRef, useState, type FormEvent} from "react";
 import {Toaster, toast} from "react-hot-toast";
-import {MYSQL_COURSE, type MysqlCourse} from "./mysql-course";
+import {type Course, type CourseRound, type CourseStep} from "./course-types";
+import {MYSQL_COURSE} from "./mysql-course";
+import {POSTGRESQL_COURSE} from "./postgresql-course";
+import {SQLSERVER_COURSE} from "./sqlserver-course";
+import {SQLITE_COURSE} from "./sqlite-course";
+import {MONGODB_COURSE} from "./mongodb-course";
+import {FIREBASE_COURSE} from "./firebase-course";
+import {CASSANDRA_COURSE} from "./cassandra-course";
+import {REDIS_COURSE} from "./redis-course";
 
 type CategoryKey = "sql" | "nosql";
 
@@ -16,14 +24,6 @@ type SubPathKey =
   | "cassandra"
   | "redis";
 
-type QuizQuestion = {
-  prompt: string;
-  options: string[];
-  correctIndex: number;
-  explanation: string;
-  hint: string;
-};
-
 type SubPathConfig = {
   id: SubPathKey;
   title: string;
@@ -35,8 +35,7 @@ type SubPathConfig = {
   border: string;
   chip: string;
   examples: string[];
-  questions?: QuizQuestion[];
-  mysqlCourse?: MysqlCourse;
+  course: Course;
 };
 
 type CategoryConfig = {
@@ -62,10 +61,12 @@ type FireworksState = {
   littleCount: number;
 };
 
-type MysqlProgressSnapshot = {
+type CourseProgressSnapshot = {
+  roundIndex: number;
+  roundStartCredits: number;
   stepOrder: number[];
   optionOrders: Record<string, number[]>;
-  mysqlStepIndex: number;
+  courseStepIndex: number;
   queryDraft: string;
   revealUsed: boolean;
   credits: number;
@@ -74,7 +75,9 @@ type MysqlProgressSnapshot = {
   completed: boolean;
 };
 
-const MYSQL_PROGRESS_STORAGE_KEY = "mysql-course-progress-v2";
+function getCourseStorageKey(subPathId: SubPathKey) {
+  return `${subPathId}-course-progress-v2`;
+}
 
 const LEARNING_TRACKS: Record<CategoryKey, CategoryConfig> = {
   sql: {
@@ -93,131 +96,56 @@ const LEARNING_TRACKS: Record<CategoryKey, CategoryConfig> = {
         title: "MySQL",
         subtitle: "Popular, friendly, and common in web apps",
         intro:
-          "A complete MySQL course with 10 foundation questions and 50 query-writing drills across DDL, DML, DCL, TCL, and DQL.",
+          "A two-round MySQL course. Round 1 covers basics plus DDL, DML, DCL, TCL, and DQL. Finish it to unlock Round 2 with JOINs, subqueries, functions, and advanced queries.",
         badge: "Beginner friendly",
         gradient: "from-cyan-400 via-blue-500 to-sky-500",
         panel: "bg-slate-950/75 shadow-[0_30px_140px_rgba(8,145,178,0.16)]",
         border: "border-cyan-300/20",
         chip: "border-cyan-300/20 bg-cyan-400/10 text-cyan-50",
-        examples: ["10 basics", "DDL", "DML", "DQL"],
-        mysqlCourse: MYSQL_COURSE,
+        examples: ["Round 1", "Round 2", "JOINs", "Subqueries"],
+        course: MYSQL_COURSE,
       },
       {
         id: "postgresql",
         title: "PostgreSQL",
         subtitle: "Feature-rich SQL with strong data integrity",
         intro:
-          "Great for learners who want to see a powerful SQL system with advanced types and strict correctness.",
+          "A two-round PostgreSQL course. Round 1 covers tables, inserts, and filtering. Round 2 unlocks CTEs, window functions, and JSONB upserts.",
         badge: "Advanced SQL",
         gradient: "from-sky-400 via-cyan-500 to-indigo-500",
         panel: "bg-slate-950/75 shadow-[0_30px_140px_rgba(56,189,248,0.14)]",
         border: "border-sky-300/20",
         chip: "border-sky-300/20 bg-sky-400/10 text-sky-50",
-        examples: ["JSONB", "ACID", "Extensions", "Strict SQL"],
-        questions: [
-          {
-            prompt: "Which database is known for strong SQL features?",
-            options: ["PostgreSQL", "SQLite", "DynamoDB", "Redis"],
-            correctIndex: 0,
-            explanation:
-              "PostgreSQL is famous for advanced SQL support and dependable data integrity.",
-            hint: "Look for the option with strong relational features.",
-          },
-          {
-            prompt: "Which PostgreSQL feature can return inserted rows?",
-            options: ["RETURNING", "TOP", "LIMIT", "MERGE"],
-            correctIndex: 0,
-            explanation:
-              "RETURNING lets PostgreSQL give back rows after an INSERT or UPDATE statement.",
-            hint: "The word suggests data is sent back to you after the action.",
-          },
-          {
-            prompt: "Which type is often used for precise decimal values?",
-            options: ["NUMERIC", "BOOLEAN", "TEXT", "BYTEA"],
-            correctIndex: 0,
-            explanation:
-              "NUMERIC is useful when exact decimal storage matters, such as money values.",
-            hint: "This type is chosen when precision matters more than speed.",
-          },
-        ],
+        examples: ["Round 1", "Round 2", "JSONB", "Window functions"],
+        course: POSTGRESQL_COURSE,
       },
       {
         id: "sqlserver",
         title: "Microsoft SQL Server",
         subtitle: "Enterprise SQL with a familiar business stack",
         intro:
-          "Useful for showing students how SQL appears in corporate environments and Microsoft tooling.",
+          "A two-round SQL Server course. Round 1 covers TOP, tables, and filtering. Round 2 unlocks paging, ranking, and MERGE.",
         badge: "Enterprise path",
         gradient: "from-blue-400 via-sky-500 to-cyan-500",
         panel: "bg-slate-950/75 shadow-[0_30px_140px_rgba(14,165,233,0.15)]",
         border: "border-blue-300/20",
         chip: "border-blue-300/20 bg-blue-400/10 text-blue-50",
-        examples: ["T-SQL", "SSMS", "TOP", "Windows stack"],
-        questions: [
-          {
-            prompt: "Which keyword often replaces LIMIT in SQL Server?",
-            options: ["TOP", "OFFSET", "FETCH", "ROWNUM"],
-            correctIndex: 0,
-            explanation:
-              "SQL Server often uses TOP to control how many rows are returned.",
-            hint: "Think of the keyword that means 'first few rows'.",
-          },
-          {
-            prompt: "What is the Microsoft SQL language style often called?",
-            options: ["T-SQL", "PL/SQL", "MySQL", "NoSQL"],
-            correctIndex: 0,
-            explanation:
-              "T-SQL is Microsoft's flavor of SQL used in SQL Server.",
-            hint: "The answer starts with a 'T'.",
-          },
-          {
-            prompt: "Which tool is commonly used to manage SQL Server?",
-            options: ["SSMS", "Figma", "Excel", "Nginx"],
-            correctIndex: 0,
-            explanation:
-              "SSMS means SQL Server Management Studio, a common admin tool.",
-            hint: "Look for the Microsoft management tool abbreviation.",
-          },
-        ],
+        examples: ["Round 1", "Round 2", "T-SQL", "MERGE"],
+        course: SQLSERVER_COURSE,
       },
       {
         id: "sqlite",
         title: "SQLite",
         subtitle: "Lightweight, embedded, and perfect for small projects",
         intro:
-          "Excellent for teaching because it is simple, file-based, and easy to run without a server.",
+          "A two-round SQLite course. Round 1 covers tables, inserts, and filtering. Round 2 unlocks upserts, pragmas, and joins.",
         badge: "Embedded database",
         gradient: "from-violet-400 via-sky-500 to-cyan-400",
         panel: "bg-slate-950/75 shadow-[0_30px_140px_rgba(59,130,246,0.14)]",
         border: "border-violet-300/20",
         chip: "border-violet-300/20 bg-violet-400/10 text-violet-50",
-        examples: ["Single file", "Mobile apps", "Embedded", "No server"],
-        questions: [
-          {
-            prompt: "Which database is usually stored in a single file?",
-            options: ["SQLite", "MySQL", "MongoDB", "Oracle"],
-            correctIndex: 0,
-            explanation:
-              "SQLite is commonly stored as a single file, which makes it easy to ship and learn.",
-            hint: "Think about the database that does not need a server process.",
-          },
-          {
-            prompt: "What makes SQLite easy to use in small apps?",
-            options: ["No separate server", "Requires clustering", "Needs a big cluster", "Only works online"],
-            correctIndex: 0,
-            explanation:
-              "SQLite is embedded, so you can use it without running a separate database server.",
-            hint: "Look for the option that sounds the simplest to deploy.",
-          },
-          {
-            prompt: "Which SQL database is often used on mobile devices?",
-            options: ["SQLite", "Redis", "Cassandra", "PostgreSQL"],
-            correctIndex: 0,
-            explanation:
-              "SQLite is common in phones and lightweight applications because it is compact and local.",
-            hint: "Think compact and local.",
-          },
-        ],
+        examples: ["Round 1", "Round 2", "Upserts", "Joins"],
+        course: SQLITE_COURSE,
       },
     ],
   },
@@ -237,156 +165,56 @@ const LEARNING_TRACKS: Record<CategoryKey, CategoryConfig> = {
         title: "MongoDB",
         subtitle: "Document-based and flexible for changing data",
         intro:
-          "A great document database for teaching JSON-like records and schema flexibility.",
+          "A two-round MongoDB course. Round 1 covers documents, CRUD, and simple queries. Round 2 unlocks aggregation and $lookup joins.",
         badge: "Document database",
         gradient: "from-fuchsia-400 via-pink-500 to-amber-400",
         panel: "bg-slate-950/75 shadow-[0_30px_140px_rgba(217,70,239,0.14)]",
         border: "border-fuchsia-300/20",
         chip: "border-fuchsia-300/20 bg-fuchsia-400/10 text-fuchsia-50",
-        examples: ["Documents", "JSON-like", "Flexible schema", "Collections"],
-        questions: [
-          {
-            prompt: "Which database stores JSON-like documents?",
-            options: ["MongoDB", "MySQL", "SQLite", "SQL Server"],
-            correctIndex: 0,
-            explanation:
-              "MongoDB stores data as documents, which makes it easy to model flexible records.",
-            hint: "Think about documents instead of tables.",
-          },
-          {
-            prompt: "Which NoSQL style lets fields vary between records?",
-            options: ["Flexible schema", "Fixed columns", "Rigid tables", "Stored views"],
-            correctIndex: 0,
-            explanation:
-              "A flexible schema is one of the main reasons document databases are so popular.",
-            hint: "Look for the option that sounds adaptable.",
-          },
-          {
-            prompt: "What is a group of MongoDB documents usually called?",
-            options: ["Collection", "Table", "Worksheet", "Schema"],
-            correctIndex: 0,
-            explanation:
-              "MongoDB groups documents into collections rather than tables.",
-            hint: "Think of the word used for a container of documents.",
-          },
-        ],
+        examples: ["Round 1", "Round 2", "Aggregation", "$lookup"],
+        course: MONGODB_COURSE,
       },
       {
         id: "firebase",
         title: "Firebase",
         subtitle: "Cloud-backed and useful for real-time apps",
         intro:
-          "Nice for teaching student-facing apps because it feels modern, fast, and connected.",
+          "A two-round Firebase course. Round 1 covers documents, CRUD, and simple queries. Round 2 unlocks live listeners and structure.",
         badge: "Realtime cloud",
         gradient: "from-amber-400 via-orange-500 to-fuchsia-500",
         panel: "bg-slate-950/75 shadow-[0_30px_140px_rgba(249,115,22,0.16)]",
         border: "border-amber-300/20",
         chip: "border-amber-300/20 bg-amber-400/10 text-amber-50",
-        examples: ["Realtime sync", "Cloud", "Mobile apps", "Auth"],
-        questions: [
-          {
-            prompt: "Which platform is common for realtime app data?",
-            options: ["Firebase", "Oracle", "SQLite", "MySQL"],
-            correctIndex: 0,
-            explanation:
-              "Firebase is often used in apps that need cloud sync and realtime updates.",
-            hint: "Think cloud-first and live syncing.",
-          },
-          {
-            prompt: "Which feature helps Firebase push updates quickly?",
-            options: ["Realtime sync", "Foreign keys", "Stored procedures", "Manual indexing only"],
-            correctIndex: 0,
-            explanation:
-              "Realtime sync lets the app update users quickly when data changes.",
-            hint: "The key idea is instant updates between users and the cloud.",
-          },
-          {
-            prompt: "Firebase is often paired with which kind of apps?",
-            options: ["Mobile and web apps", "Only desktop databases", "Only spreadsheet files", "Only offline text files"],
-            correctIndex: 0,
-            explanation:
-              "Firebase is popular for mobile and web experiences that need quick backend setup.",
-            hint: "Look for the app types that need fast startup.",
-          },
-        ],
+        examples: ["Round 1", "Round 2", "onSnapshot", "Subcollections"],
+        course: FIREBASE_COURSE,
       },
       {
         id: "cassandra",
         title: "Cassandra",
         subtitle: "Distributed and built for large-scale availability",
         intro:
-          "Good for explaining a NoSQL system that focuses on scale, resilience, and distributed storage.",
+          "A two-round Cassandra course. Round 1 covers keyspaces, tables, and filtering. Round 2 unlocks clustering, TTLs, and batches.",
         badge: "Distributed data",
         gradient: "from-indigo-400 via-fuchsia-500 to-pink-500",
         panel: "bg-slate-950/75 shadow-[0_30px_140px_rgba(129,140,248,0.15)]",
         border: "border-indigo-300/20",
         chip: "border-indigo-300/20 bg-indigo-400/10 text-indigo-50",
-        examples: ["Wide column", "Distributed", "High availability", "Scale out"],
-        questions: [
-          {
-            prompt: "Which NoSQL database is designed for distributed scale?",
-            options: ["Cassandra", "SQLite", "MySQL", "Access"],
-            correctIndex: 0,
-            explanation:
-              "Cassandra is built for distributed data and high availability across many nodes.",
-            hint: "Think about a database used across many machines.",
-          },
-          {
-            prompt: "Which scaling style is common for Cassandra?",
-            options: ["Horizontal scaling", "One server only", "Manual spreadsheets", "File by file"],
-            correctIndex: 0,
-            explanation:
-              "Cassandra scales out by using more nodes rather than depending on one giant server.",
-            hint: "The clue is adding more machines.",
-          },
-          {
-            prompt: "Which property is especially important in Cassandra?",
-            options: ["High availability", "Tiny local files", "Single-user tables", "Spreadsheet formatting"],
-            correctIndex: 0,
-            explanation:
-              "Cassandra is often chosen when uptime and resilience matter.",
-            hint: "Look for the system that stays available even when nodes fail.",
-          },
-        ],
+        examples: ["Round 1", "Round 2", "Clustering", "TTL"],
+        course: CASSANDRA_COURSE,
       },
       {
         id: "redis",
         title: "Redis",
         subtitle: "In-memory key-value speed for caching and sessions",
         intro:
-          "Helpful for showing students a fast NoSQL style that often powers caches and temporary data.",
+          "A two-round Redis course. Round 1 covers strings, keys, and expiry. Round 2 unlocks lists, hashes, sets, and pub/sub.",
         badge: "Fast key-value",
         gradient: "from-emerald-400 via-teal-500 to-cyan-400",
         panel: "bg-slate-950/75 shadow-[0_30px_140px_rgba(16,185,129,0.14)]",
         border: "border-emerald-300/20",
         chip: "border-emerald-300/20 bg-emerald-400/10 text-emerald-50",
-        examples: ["Cache", "Sessions", "Fast lookups", "In-memory"],
-        questions: [
-          {
-            prompt: "Which database is famous for in-memory speed?",
-            options: ["Redis", "PostgreSQL", "SQLite", "Oracle"],
-            correctIndex: 0,
-            explanation:
-              "Redis is known for very fast reads and writes because it works mainly in memory.",
-            hint: "Look for the ultra-fast key-value system.",
-          },
-          {
-            prompt: "What is Redis often used for?",
-            options: ["Caching", "Foreign key joins", "Spreadsheet formulas", "Manual backups only"],
-            correctIndex: 0,
-            explanation:
-              "Redis is commonly used as a cache to speed up frequently accessed data.",
-            hint: "Think about temporary data that must be read quickly.",
-          },
-          {
-            prompt: "Which data model fits Redis best?",
-            options: ["Key-value", "Relational table", "Spreadsheet grid", "XML tree only"],
-            correctIndex: 0,
-            explanation:
-              "Redis is a key-value store, which makes it simple and fast for many workloads.",
-            hint: "The clue is one key paired with one value.",
-          },
-        ],
+        examples: ["Round 1", "Round 2", "Data structures", "Pub/Sub"],
+        course: REDIS_COURSE,
       },
     ],
   },
@@ -415,53 +243,24 @@ function buildOptionOrder(optionCount: number) {
   return shuffleArray(Array.from({length: optionCount}, (_, index) => index));
 }
 
-function buildQuestionOptionOrders<T extends {options: string[]}>(questions: T[]) {
-  return questions.reduce<Record<string, number[]>>((orders, question, index) => {
-    orders[String(index)] = buildOptionOrder(question.options.length);
-    return orders;
-  }, {});
-}
-
-function buildMysqlStepOrder(course: MysqlCourse) {
-  const basics = course.steps
-    .map((step, index) => ({step, index}))
-    .filter(({step}) => step.kind === "mcq")
-    .map(({index}) => index);
-
-  const ddl = course.steps
-    .map((step, index) => ({step, index}))
-    .filter(({step}) => step.kind === "query" && step.topicKey === "ddl")
-    .map(({index}) => index);
-  const dml = course.steps
-    .map((step, index) => ({step, index}))
-    .filter(({step}) => step.kind === "query" && step.topicKey === "dml")
-    .map(({index}) => index);
-  const dcl = course.steps
-    .map((step, index) => ({step, index}))
-    .filter(({step}) => step.kind === "query" && step.topicKey === "dcl")
-    .map(({index}) => index);
-  const tcl = course.steps
-    .map((step, index) => ({step, index}))
-    .filter(({step}) => step.kind === "query" && step.topicKey === "tcl")
-    .map(({index}) => index);
-  const dql = course.steps
-    .map((step, index) => ({step, index}))
-    .filter(({step}) => step.kind === "query" && step.topicKey === "dql")
-    .map(({index}) => index);
-
-  return [
-    ...shuffleArray(basics),
-    ...shuffleArray(ddl),
-    ...shuffleArray(dml),
-    ...shuffleArray(dcl),
-    ...shuffleArray(tcl),
-    ...shuffleArray(dql),
+function buildCourseStepOrder(round: CourseRound) {
+  const indexedSteps = round.steps.map((step, index) => ({step, index}));
+  const basics = indexedSteps.filter(({step}) => step.kind === "mcq").map(({index}) => index);
+  const topicKeys = [
+    ...new Set(indexedSteps.flatMap(({step}) => (step.kind === "query" ? [step.topicKey] : []))),
   ];
+  const topicGroups = topicKeys.map((topicKey) =>
+    indexedSteps
+      .filter(({step}) => step.kind === "query" && step.topicKey === topicKey)
+      .map(({index}) => index),
+  );
+
+  return [...shuffleArray(basics), ...topicGroups.flatMap((group) => shuffleArray(group))];
 }
 
-function buildMysqlOptionOrders(course: MysqlCourse, stepOrder: number[]) {
+function buildCourseOptionOrders(round: CourseRound, stepOrder: number[]) {
   return stepOrder.reduce<Record<string, number[]>>((orders, stepIndex) => {
-    const step = course.steps[stepIndex];
+    const step = round.steps[stepIndex];
 
     if (step.kind === "mcq") {
       orders[String(stepIndex)] = buildOptionOrder(step.options.length);
@@ -471,24 +270,54 @@ function buildMysqlOptionOrders(course: MysqlCourse, stepOrder: number[]) {
   }, {});
 }
 
-function readMysqlProgressSnapshot() {
+function buildCourseRoundSnapshot(
+  course: Course,
+  roundIndex: number,
+  carry: {credits: number; streak: number},
+): CourseProgressSnapshot {
+  const round = course.rounds[roundIndex];
+  const stepOrder = buildCourseStepOrder(round);
+
+  return {
+    roundIndex,
+    roundStartCredits: carry.credits,
+    stepOrder,
+    optionOrders: buildCourseOptionOrders(round, stepOrder),
+    courseStepIndex: 0,
+    queryDraft: "",
+    revealUsed: false,
+    credits: carry.credits,
+    streak: carry.streak,
+    wrongAttempts: 0,
+    completed: false,
+  };
+}
+
+function readCourseProgressSnapshot(subPathId: SubPathKey, course: Course) {
   if (typeof window === "undefined") {
     return null;
   }
 
   try {
-    const rawValue = window.localStorage.getItem(MYSQL_PROGRESS_STORAGE_KEY);
+    const rawValue = window.localStorage.getItem(getCourseStorageKey(subPathId));
     if (!rawValue) {
       return null;
     }
 
-    const parsed = JSON.parse(rawValue) as Partial<MysqlProgressSnapshot>;
+    const parsed = JSON.parse(rawValue) as Partial<CourseProgressSnapshot>;
     if (
       !Array.isArray(parsed.stepOrder) ||
       typeof parsed.optionOrders !== "object" ||
       parsed.optionOrders === null ||
-      typeof parsed.mysqlStepIndex !== "number"
+      typeof parsed.courseStepIndex !== "number"
     ) {
+      return null;
+    }
+
+    // Saves from before rounds existed have no roundIndex and belong to round 1.
+    const roundIndex = parsed.roundIndex ?? 0;
+    const round = Number.isInteger(roundIndex) ? course.rounds[roundIndex] : undefined;
+    if (!round) {
       return null;
     }
 
@@ -505,9 +334,9 @@ function readMysqlProgressSnapshot() {
 
     const uniqueStepOrder = new Set(stepOrder);
     const isValidStepOrder =
-      stepOrder.length === MYSQL_COURSE.steps.length &&
-      uniqueStepOrder.size === MYSQL_COURSE.steps.length &&
-      stepOrder.every((item) => item >= 0 && item < MYSQL_COURSE.steps.length);
+      stepOrder.length === round.steps.length &&
+      uniqueStepOrder.size === round.steps.length &&
+      stepOrder.every((item) => item >= 0 && item < round.steps.length);
 
     if (!isValidStepOrder) {
       return null;
@@ -515,7 +344,7 @@ function readMysqlProgressSnapshot() {
 
     for (const [key, order] of Object.entries(optionOrders)) {
       const stepIndex = Number(key);
-      const step = MYSQL_COURSE.steps[stepIndex];
+      const step = round.steps[stepIndex];
       if (!step || step.kind !== "mcq") {
         return null;
       }
@@ -530,45 +359,56 @@ function readMysqlProgressSnapshot() {
     }
 
     return {
+      roundIndex,
+      roundStartCredits: typeof parsed.roundStartCredits === "number" ? parsed.roundStartCredits : 0,
       stepOrder,
       optionOrders,
-      mysqlStepIndex: Math.max(0, parsed.mysqlStepIndex),
+      courseStepIndex: Math.max(0, parsed.courseStepIndex),
       queryDraft: typeof parsed.queryDraft === "string" ? parsed.queryDraft : "",
       revealUsed: Boolean(parsed.revealUsed),
       credits: typeof parsed.credits === "number" ? parsed.credits : 0,
       streak: typeof parsed.streak === "number" ? parsed.streak : 0,
       wrongAttempts: typeof parsed.wrongAttempts === "number" ? parsed.wrongAttempts : 0,
       completed: Boolean(parsed.completed),
-    } satisfies MysqlProgressSnapshot;
+    } satisfies CourseProgressSnapshot;
   } catch {
     return null;
   }
 }
 
-function saveMysqlProgressSnapshot(snapshot: MysqlProgressSnapshot) {
+function saveCourseProgressSnapshot(subPathId: SubPathKey, snapshot: CourseProgressSnapshot) {
   if (typeof window === "undefined") {
     return;
   }
 
-  window.localStorage.setItem(MYSQL_PROGRESS_STORAGE_KEY, JSON.stringify(snapshot));
+  window.localStorage.setItem(getCourseStorageKey(subPathId), JSON.stringify(snapshot));
 }
 
-function clearMysqlProgressSnapshot() {
+function clearCourseProgressSnapshot(subPathId: SubPathKey) {
   if (typeof window === "undefined") {
     return;
   }
 
-  window.localStorage.removeItem(MYSQL_PROGRESS_STORAGE_KEY);
+  window.localStorage.removeItem(getCourseStorageKey(subPathId));
 }
 
-function describeMysqlStep(step: MysqlCourse["steps"][number] | null) {
+function describeCourseStep(step: CourseStep | null, round?: CourseRound | null) {
   if (!step) {
-    return "MySQL";
+    return round?.title ?? "Course";
   }
 
-  return step.kind === "mcq"
-    ? `Basics ${step.stepNumber} of ${step.stepTotal}`
-    : `${step.topicTitle} ${step.stepNumber} of ${step.stepTotal}`;
+  const stepLabel =
+    step.kind === "mcq"
+      ? `${step.sectionTitle} ${step.stepNumber} of ${step.stepTotal}`
+      : `${step.topicTitle} ${step.stepNumber} of ${step.stepTotal}`;
+
+  return round ? `${round.title} · ${stepLabel}` : stepLabel;
+}
+
+function getSnapshotStep(course: Course, snapshot: CourseProgressSnapshot) {
+  const round = course.rounds[snapshot.roundIndex] ?? null;
+  const step = round?.steps[snapshot.stepOrder[snapshot.courseStepIndex] ?? -1] ?? null;
+  return {round, step};
 }
 
 function canonicalizeSqlQuery(query: string) {
@@ -584,7 +424,18 @@ function normalizeSqlAnswerForComparison(query: string) {
     /\b(varchar|char|varbinary|binary|decimal|numeric|float|double|tinyint|smallint|mediumint|int|integer|bigint)\s*\(\s*\d+(?:\s*,\s*\d+)?\s*\)/g;
 
   return canonicalizeSqlQuery(query)
+    .replace(/"/g, "'")
     .replace(typeLengthPattern, "$1")
+    .replace(/\s+/g, " ")
+    .replace(/\binner join\b/g, "join")
+    .replace(/\b(left|right) outer join\b/g, "$1 join")
+    // Aliases may be written with or without AS; keep the AS in "VIEW v AS SELECT" and "WITH cte AS (".
+    .replace(/ as (?!select\b|\()/g, " ")
+    .replace(/!=/g, "<>")
+    // "ON a = b" and "ON b = a" are the same join condition.
+    .replace(/\bon ([\w.]+) ?= ?([\w.]+)/g, (_, left: string, right: string) =>
+      left < right ? `on ${left} = ${right}` : `on ${right} = ${left}`,
+    )
     .replace(/\s+/g, "")
     .replace(/column/g, "")
     .replace(/primary_key_auto_increment/g, "primary_key_auto_increment")
@@ -593,13 +444,59 @@ function normalizeSqlAnswerForComparison(query: string) {
     .replace(/auto_incrementprimarykey/g, "primary_key_auto_increment");
 }
 
-function matchesMysqlQuery(expected: string, actual: string) {
+function matchesSqlQuery(expected: string, actual: string) {
   return normalizeSqlAnswerForComparison(expected) === normalizeSqlAnswerForComparison(actual);
 }
 
 function buildQueryHintSnippet(answer: string) {
   const normalizedAnswer = answer.replace(/`/g, "").replace(/;+\s*$/, "").trim();
   const normalizedUpper = normalizedAnswer.toUpperCase();
+
+  if (normalizedUpper.startsWith("WITH")) {
+    return "WITH ... AS (SELECT ...) SELECT ...;";
+  }
+
+  if (normalizedUpper.startsWith("INSERT INTO") && normalizedUpper.includes(" ON DUPLICATE KEY UPDATE ")) {
+    return "INSERT INTO ... VALUES (...) ON DUPLICATE KEY UPDATE ...;";
+  }
+
+  if (normalizedUpper.startsWith("INSERT INTO") && normalizedUpper.includes(" SELECT ")) {
+    return "INSERT INTO ... SELECT ... FROM ...;";
+  }
+
+  if (normalizedUpper.startsWith("UPDATE") && normalizedUpper.includes(" JOIN ")) {
+    return "UPDATE ... JOIN ... ON ... SET ... WHERE ...;";
+  }
+
+  if (normalizedUpper.startsWith("SELECT")) {
+    if (!normalizedUpper.includes(" FROM")) {
+      return "SELECT ...;";
+    }
+
+    if (normalizedUpper.includes(" CROSS JOIN ")) {
+      return "SELECT ... FROM ... CROSS JOIN ...;";
+    }
+
+    if (normalizedUpper.includes(" JOIN ")) {
+      return "SELECT ... FROM ... JOIN ... ON ...;";
+    }
+
+    if (normalizedUpper.includes("FROM (SELECT")) {
+      return "SELECT ... FROM (SELECT ...) AS ...;";
+    }
+
+    if (normalizedUpper.includes("(SELECT")) {
+      return "SELECT ... FROM ... WHERE ... (SELECT ...);";
+    }
+
+    if (normalizedUpper.includes(" OVER (")) {
+      return "SELECT ..., ...() OVER (...) AS ... FROM ...;";
+    }
+
+    if (normalizedUpper.includes(" CASE ")) {
+      return "SELECT ..., CASE WHEN ... THEN ... ELSE ... END AS ... FROM ...;";
+    }
+  }
 
   if (normalizedUpper.startsWith("CREATE DATABASE")) {
     return "CREATE DATABASE ...;";
@@ -661,6 +558,64 @@ function buildQueryHintSnippet(answer: string) {
   return `${tokens.slice(0, 3).join(" ")} ...;`;
 }
 
+// For case-sensitive command languages (Mongo shell, Firestore JS), where lowercasing
+// would break field names and operators. Whitespace and quote style still don't matter.
+function normalizeCodeAnswerForComparison(code: string) {
+  return code
+    .replace(/`/g, "'")
+    .replace(/"/g, "'")
+    .replace(/;+\s*$/, "")
+    .trim()
+    .replace(/\s+/g, "");
+}
+
+function matchesCodeQuery(expected: string, actual: string) {
+  return normalizeCodeAnswerForComparison(expected) === normalizeCodeAnswerForComparison(actual);
+}
+
+// Collapses every top-level (...), {...}, or [...] argument list to "...", so a hint shows
+// the shape of a call like db.students.find(...).sort(...) without giving away its contents.
+function buildCodeHintSnippet(answer: string) {
+  const trimmed = answer.trim().replace(/;+\s*$/, "");
+  let output = "";
+  let depth = 0;
+
+  for (const char of trimmed) {
+    if (char === "(" || char === "{" || char === "[") {
+      if (depth === 0) {
+        output += `${char}...`;
+      }
+      depth += 1;
+      continue;
+    }
+
+    if (char === ")" || char === "}" || char === "]") {
+      depth -= 1;
+      if (depth === 0) {
+        output += char;
+      }
+      continue;
+    }
+
+    if (depth === 0) {
+      output += char;
+    }
+  }
+
+  return `${output};`;
+}
+
+function matchesCourseQuery(step: CourseStep & {kind: "query"}, actual: string) {
+  return step.acceptedAnswers.some((answer) =>
+    step.language === "code" ? matchesCodeQuery(answer, actual) : matchesSqlQuery(answer, actual),
+  );
+}
+
+function buildStepHintSnippet(step: CourseStep & {kind: "query"}) {
+  const answer = step.acceptedAnswers[0] ?? step.starter;
+  return step.language === "code" ? buildCodeHintSnippet(answer) : buildQueryHintSnippet(answer);
+}
+
 function calculateQuestionCredits(baseCredits: number, wrongAttempts: number, revealUsed: boolean) {
   if (revealUsed) {
     return 0;
@@ -711,12 +666,10 @@ function resetSession(
   clearTimer: () => void,
   setCategory: (track: CategoryKey | null) => void,
   setSubPath: (subPath: SubPathKey | null) => void,
-  setQuestionIndex: (index: number) => void,
-  setMysqlStepIndex: (index: number) => void,
-  setMysqlStepOrder: (order: number[]) => void,
-  setMysqlOptionOrders: (orders: Record<string, number[]>) => void,
-  setQuestionOptionOrders: (orders: Record<string, number[]>) => void,
-  setMysqlSessionReady: (ready: boolean) => void,
+  setCourseStepIndex: (index: number) => void,
+  setCourseStepOrder: (order: number[]) => void,
+  setCourseOptionOrders: (orders: Record<string, number[]>) => void,
+  setCourseSessionReady: (ready: boolean) => void,
   setAnswerRevealUsed: (used: boolean) => void,
   setSelectedChoice: (choice: number | null) => void,
   setQueryDraft: (draft: string) => void,
@@ -731,12 +684,10 @@ function resetSession(
   clearTimer();
   setCategory(nextCategory);
   setSubPath(nextSubPath);
-  setQuestionIndex(0);
-  setMysqlStepIndex(0);
-  setMysqlStepOrder([]);
-  setMysqlOptionOrders({});
-  setQuestionOptionOrders({});
-  setMysqlSessionReady(false);
+  setCourseStepIndex(0);
+  setCourseStepOrder([]);
+  setCourseOptionOrders({});
+  setCourseSessionReady(false);
   setAnswerRevealUsed(false);
   setSelectedChoice(null);
   setQueryDraft("");
@@ -883,29 +834,6 @@ function ChoiceButton({
   );
 }
 
-type FireworkSpark = {
-  x: number;
-  y: number;
-  size: number;
-  delay: number;
-  duration: number;
-  color: string;
-  angle: number;
-};
-
-function makeSeededRandom(seed: number) {
-  let value = seed % 2147483647;
-
-  if (value <= 0) {
-    value += 2147483646;
-  }
-
-  return () => {
-    value = (value * 48271) % 2147483647;
-    return (value - 1) / 2147483646;
-  };
-}
-
 function buildFireworksState(wrongAttempts: number, revealUsed: boolean): FireworksState | null {
   if (revealUsed) {
     return null;
@@ -938,201 +866,318 @@ function buildFireworksState(wrongAttempts: number, revealUsed: boolean): Firewo
   return null;
 }
 
-function buildFireworkSparks(seed: number, count: number, colors: string[]) {
-  const random = makeSeededRandom(seed);
-
-  return Array.from({length: count}, (_, index) => {
-    const angle = random() * Math.PI * 2;
-    const distance = 54 + random() * 84;
-    return {
-      x: Math.cos(angle) * distance,
-      y: Math.sin(angle) * distance,
-      size: 2 + random() * 3.5,
-      delay: random() * 0.35 + index * 0.006,
-      duration: 1100 + random() * 700,
-      color: colors[index % colors.length],
-      angle,
-    } satisfies FireworkSpark;
-  });
-}
-
-type FireworkPoint = {
-  left: string;
-  top: string;
-  scale: number;
-  sparkCount: number;
-  seedOffset: number;
-  coreClass: string;
-  ringClass: string;
-  glowClass: string;
-  palette: string[];
+type FireworkShell = {
+  launchAt: number;
+  x: number;
+  targetY: number;
+  hue: number;
+  accentHue: number;
+  particleCount: number;
+  speed: number;
+  glitter: boolean;
 };
 
-function FireworksCelebration({burst}: {burst: FireworksState | null}) {
+type FireworkRocket = {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  trail: {x: number; y: number}[];
+  shell: FireworkShell;
+};
+
+type FireworkParticle = {
+  x: number;
+  y: number;
+  trail: {x: number; y: number}[];
+  vx: number;
+  vy: number;
+  alpha: number;
+  decay: number;
+  hue: number;
+  lightness: number;
+  width: number;
+  friction: number;
+  gravity: number;
+  glitter: boolean;
+};
+
+type FireworkFlash = {
+  x: number;
+  y: number;
+  radius: number;
+  hue: number;
+  alpha: number;
+};
+
+const ROCKET_GRAVITY = 0.5;
+const FRAME_MS = 1000 / 60;
+
+// Shell layouts as fractions of the viewport: big shells first, then the little ones.
+const MAIN_SHELLS = [
+  {x: 0.2, y: 0.24, hue: 190, accentHue: 280, glitter: false},
+  {x: 0.8, y: 0.22, hue: 330, accentHue: 45, glitter: false},
+  {x: 0.5, y: 0.14, hue: 45, accentHue: 0, glitter: true},
+];
+
+const LITTLE_SHELLS = [
+  {x: 0.12, y: 0.44, hue: 270, accentHue: 190},
+  {x: 0.5, y: 0.36, hue: 160, accentHue: 60},
+  {x: 0.88, y: 0.46, hue: 20, accentHue: 330},
+];
+
+function buildFireworkShells(burst: FireworksState, width: number, height: number) {
+  const scale = Math.min(Math.max(Math.min(width, height) / 750, 0.55), 1.25);
+  const density = width < 640 ? 0.7 : 1;
+  const mainShells = MAIN_SHELLS.slice(0, burst.mainCount).map<FireworkShell>((shell, index) => ({
+    launchAt: index * 180,
+    x: shell.x * width,
+    targetY: shell.y * height,
+    hue: shell.hue,
+    accentHue: shell.accentHue,
+    particleCount: Math.round(90 * density),
+    speed: 9 * scale,
+    glitter: shell.glitter,
+  }));
+  const littleStart = mainShells.length ? 500 : 0;
+  const littleShells = LITTLE_SHELLS.slice(0, burst.littleCount).map<FireworkShell>((shell, index) => ({
+    launchAt: littleStart + index * 150,
+    x: shell.x * width,
+    targetY: shell.y * height,
+    hue: shell.hue,
+    accentHue: shell.accentHue,
+    particleCount: Math.round(45 * density),
+    speed: 5 * scale,
+    glitter: false,
+  }));
+
+  return [...mainShells, ...littleShells];
+}
+
+function launchRocket(shell: FireworkShell, height: number): FireworkRocket {
+  const startX = shell.x + (Math.random() - 0.5) * 60;
+  const startY = height + 10;
+  const vy = -Math.sqrt(2 * ROCKET_GRAVITY * (startY - shell.targetY));
+  const framesToApex = -vy / ROCKET_GRAVITY;
+
+  return {
+    x: startX,
+    y: startY,
+    vx: (shell.x - startX) / framesToApex,
+    vy,
+    trail: [],
+    shell,
+  };
+}
+
+function explodeShell(shell: FireworkShell, x: number, y: number): FireworkParticle[] {
+  const particles: FireworkParticle[] = [];
+  const makeParticle = (angle: number, speed: number, hue: number, lightness: number, width: number) => ({
+    x,
+    y,
+    trail: [],
+    vx: Math.cos(angle) * speed,
+    vy: Math.sin(angle) * speed,
+    alpha: 1,
+    decay: 0.011 + Math.random() * 0.008,
+    hue: hue + (Math.random() - 0.5) * 24,
+    lightness,
+    width,
+    friction: 0.955,
+    gravity: 0.06,
+    glitter: shell.glitter,
+  });
+
+  // Outer shell: most sparks near full speed so the burst reads as a sphere.
+  for (let index = 0; index < shell.particleCount; index += 1) {
+    const angle = (index / shell.particleCount) * Math.PI * 2 + Math.random() * 0.2;
+    const speed = shell.speed * (0.7 + Math.random() * 0.3);
+    particles.push(makeParticle(angle, speed, shell.hue, 62 + Math.random() * 10, 2.2));
+  }
+
+  // Inner core in an accent colour.
+  const coreCount = Math.round(shell.particleCount * 0.3);
+  for (let index = 0; index < coreCount; index += 1) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = shell.speed * (0.2 + Math.random() * 0.3);
+    particles.push(makeParticle(angle, speed, shell.accentHue, 70, 1.6));
+  }
+
+  return particles;
+}
+
+function FireworksCelebration({burst, onDone}: {burst: FireworksState | null; onDone: () => void}) {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const context = canvas?.getContext("2d");
+    if (!burst || !canvas || !context) {
+      return;
+    }
+
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      onDone();
+      return;
+    }
+
+    let width = window.innerWidth;
+    let height = window.innerHeight;
+    const resize = () => {
+      const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+      width = window.innerWidth;
+      height = window.innerHeight;
+      canvas.width = Math.round(width * pixelRatio);
+      canvas.height = Math.round(height * pixelRatio);
+      context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+    };
+    resize();
+    window.addEventListener("resize", resize);
+
+    const pendingShells = buildFireworkShells(burst, width, height);
+    const rockets: FireworkRocket[] = [];
+    let particles: FireworkParticle[] = [];
+    let flashes: FireworkFlash[] = [];
+    const startedAt = performance.now();
+    let lastFrameAt = startedAt;
+    let frameId = 0;
+
+    const renderFrame = (now: number) => {
+      const step = Math.min((now - lastFrameAt) / FRAME_MS, 3);
+      lastFrameAt = now;
+
+      while (pendingShells.length && now - startedAt >= pendingShells[0].launchAt) {
+        rockets.push(launchRocket(pendingShells.shift()!, height));
+      }
+
+      context.clearRect(0, 0, width, height);
+      context.globalCompositeOperation = "lighter";
+      context.lineCap = "round";
+
+      for (let index = rockets.length - 1; index >= 0; index -= 1) {
+        const rocket = rockets[index];
+        rocket.trail.push({x: rocket.x, y: rocket.y});
+        if (rocket.trail.length > 10) {
+          rocket.trail.shift();
+        }
+
+        rocket.x += rocket.vx * step;
+        rocket.y += rocket.vy * step;
+        rocket.vy += ROCKET_GRAVITY * step;
+
+        const tail = rocket.trail[0];
+        const gradient = context.createLinearGradient(tail.x, tail.y, rocket.x, rocket.y);
+        gradient.addColorStop(0, "rgba(255, 200, 120, 0)");
+        gradient.addColorStop(1, "rgba(255, 236, 200, 0.95)");
+        context.strokeStyle = gradient;
+        context.lineWidth = 2.4;
+        context.beginPath();
+        context.moveTo(tail.x, tail.y);
+        context.lineTo(rocket.x, rocket.y);
+        context.stroke();
+
+        if (Math.random() < 0.6 * step) {
+          particles.push({
+            x: rocket.x,
+            y: rocket.y,
+            trail: [],
+            vx: (Math.random() - 0.5) * 0.8,
+            vy: Math.random() * 0.8,
+            alpha: 0.8,
+            decay: 0.05,
+            hue: 38,
+            lightness: 65,
+            width: 1.2,
+            friction: 0.9,
+            gravity: 0.04,
+            glitter: false,
+          });
+        }
+
+        if (rocket.vy >= -2.5) {
+          rockets.splice(index, 1);
+          particles.push(...explodeShell(rocket.shell, rocket.x, rocket.y));
+          flashes.push({
+            x: rocket.x,
+            y: rocket.y,
+            radius: rocket.shell.speed * 16,
+            hue: rocket.shell.hue,
+            alpha: 0.55,
+          });
+        }
+      }
+
+      for (const flash of flashes) {
+        const glow = context.createRadialGradient(flash.x, flash.y, 0, flash.x, flash.y, flash.radius);
+        glow.addColorStop(0, `hsla(${flash.hue}, 100%, 85%, ${flash.alpha})`);
+        glow.addColorStop(1, `hsla(${flash.hue}, 100%, 60%, 0)`);
+        context.fillStyle = glow;
+        context.beginPath();
+        context.arc(flash.x, flash.y, flash.radius, 0, Math.PI * 2);
+        context.fill();
+        flash.alpha -= 0.07 * step;
+      }
+      flashes = flashes.filter((flash) => flash.alpha > 0);
+
+      for (const particle of particles) {
+        // Each spark keeps a few past positions and is drawn as a short tapering streak.
+        particle.trail.push({x: particle.x, y: particle.y});
+        if (particle.trail.length > 5) {
+          particle.trail.shift();
+        }
+        const drag = Math.pow(particle.friction, step);
+        particle.vx *= drag;
+        particle.vy = particle.vy * drag + particle.gravity * step;
+        particle.x += particle.vx * step;
+        particle.y += particle.vy * step;
+        particle.alpha -= particle.decay * step;
+
+        if (particle.alpha <= 0) {
+          continue;
+        }
+
+        // Glitter shells twinkle white as they burn out.
+        const twinkle = particle.glitter && particle.alpha < 0.65;
+        if (twinkle && Math.random() < 0.45) {
+          continue;
+        }
+
+        context.strokeStyle = twinkle
+          ? `hsla(50, 100%, 92%, ${particle.alpha})`
+          : `hsla(${particle.hue}, 100%, ${particle.lightness}%, ${particle.alpha})`;
+        context.lineWidth = particle.width;
+        context.beginPath();
+        context.moveTo(particle.trail[0].x, particle.trail[0].y);
+        context.lineTo(particle.x, particle.y);
+        context.stroke();
+      }
+      particles = particles.filter((particle) => particle.alpha > 0);
+
+      if (!pendingShells.length && !rockets.length && !particles.length && !flashes.length) {
+        context.clearRect(0, 0, width, height);
+        onDone();
+        return;
+      }
+
+      frameId = window.requestAnimationFrame(renderFrame);
+    };
+
+    frameId = window.requestAnimationFrame(renderFrame);
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      window.removeEventListener("resize", resize);
+      context.clearRect(0, 0, width, height);
+    };
+  }, [burst, onDone]);
+
   if (!burst) {
     return null;
   }
 
-  const mainSparksPalette = ["#22d3ee", "#38bdf8", "#a855f7", "#f472b6"];
-  const rightMainPalette = ["#f472b6", "#fb7185", "#f59e0b", "#f97316"];
-  const topMainPalette = ["#f8fafc", "#22d3ee", "#e879f9", "#fde047"];
-  const littlePalette = ["#67e8f9", "#c084fc", "#f9a8d4", "#fde68a"];
-
-  const mainPoints: FireworkPoint[] = [
-    {
-      left: "11vw",
-      top: "22vh",
-      scale: 1,
-      sparkCount: 18,
-      seedOffset: 11,
-      coreClass: "firework-core-left",
-      ringClass: "firework-ring-left",
-      glowClass: "firework-glow-left",
-      palette: mainSparksPalette,
-    },
-    {
-      left: "89vw",
-      top: "20vh",
-      scale: 1,
-      sparkCount: 18,
-      seedOffset: 51,
-      coreClass: "firework-core-right",
-      ringClass: "firework-ring-right",
-      glowClass: "firework-glow-right",
-      palette: rightMainPalette,
-    },
-    {
-      left: "50%",
-      top: "12vh",
-      scale: 1.05,
-      sparkCount: 18,
-      seedOffset: 31,
-      coreClass: "firework-core-top",
-      ringClass: "firework-ring-top",
-      glowClass: "firework-glow-top",
-      palette: topMainPalette,
-    },
-  ];
-
-  const littlePoints: FireworkPoint[] = [
-    {
-      left: "8vw",
-      top: "57vh",
-      scale: 0.52,
-      sparkCount: 10,
-      seedOffset: 91,
-      coreClass: "firework-core-left",
-      ringClass: "firework-ring-left",
-      glowClass: "firework-glow-left",
-      palette: littlePalette,
-    },
-    {
-      left: "50%",
-      top: "33vh",
-      scale: 0.46,
-      sparkCount: 10,
-      seedOffset: 111,
-      coreClass: "firework-core-top",
-      ringClass: "firework-ring-top",
-      glowClass: "firework-glow-top",
-      palette: littlePalette,
-    },
-    {
-      left: "92vw",
-      top: "58vh",
-      scale: 0.52,
-      sparkCount: 10,
-      seedOffset: 131,
-      coreClass: "firework-core-right",
-      ringClass: "firework-ring-right",
-      glowClass: "firework-glow-right",
-      palette: littlePalette,
-    },
-  ];
-
   return (
-    <div aria-hidden="true" className="pointer-events-none fixed inset-0 z-50 overflow-hidden">
-      <div className="firework-night-glow" />
-
-      {mainPoints.slice(0, burst.mainCount).map((point) => {
-        const sparks = buildFireworkSparks(
-          burst.id + point.seedOffset,
-          point.sparkCount,
-          point.palette,
-        );
-
-        return (
-          <div
-            key={`main-${point.seedOffset}`}
-            className="firework-burst"
-            style={{
-              left: point.left,
-              top: point.top,
-              transform: `translate(-50%, -50%) scale(${point.scale})`,
-            }}
-          >
-            <span className={`firework-glow ${point.glowClass}`} />
-            <span className={`firework-core ${point.coreClass}`} />
-            <span className={`firework-ring ${point.ringClass}`} />
-            {sparks.map((spark, sparkIndex) => (
-              <span
-                key={`main-${point.seedOffset}-${sparkIndex}`}
-                className="firework-spark"
-                style={
-                  {
-                    "--spark-x": `${spark.x}px`,
-                    "--spark-y": `${spark.y}px`,
-                    "--spark-size": `${spark.size}px`,
-                    "--spark-delay": `${spark.delay}s`,
-                    "--spark-duration": `${spark.duration}ms`,
-                    "--spark-color": spark.color,
-                    "--spark-angle": `${spark.angle}rad`,
-                  } as CSSProperties
-                }
-              />
-            ))}
-          </div>
-        );
-      })}
-
-      {littlePoints.slice(0, burst.littleCount).map((point) => {
-        const sparks = buildFireworkSparks(burst.id + point.seedOffset, point.sparkCount, littlePalette);
-
-        return (
-          <div
-            key={`little-${point.seedOffset}`}
-            className="firework-burst firework-burst-little"
-            style={{
-              left: point.left,
-              top: point.top,
-              transform: `translate(-50%, -50%) scale(${point.scale})`,
-            }}
-          >
-            <span className={`firework-glow ${point.glowClass}`} />
-            <span className={`firework-core ${point.coreClass}`} />
-            <span className={`firework-ring ${point.ringClass}`} />
-            {sparks.map((spark, sparkIndex) => (
-              <span
-                key={`little-${point.seedOffset}-${sparkIndex}`}
-                className="firework-spark"
-                style={
-                  {
-                    "--spark-x": `${spark.x}px`,
-                    "--spark-y": `${spark.y}px`,
-                    "--spark-size": `${spark.size}px`,
-                    "--spark-delay": `${spark.delay}s`,
-                    "--spark-duration": `${spark.duration}ms`,
-                    "--spark-color": spark.color,
-                    "--spark-angle": `${spark.angle}rad`,
-                  } as CSSProperties
-                }
-              />
-            ))}
-          </div>
-        );
-      })}
-
-      <span className="sr-only">Celebration fireworks for a solved answer.</span>
+    <div aria-hidden="true" className="pointer-events-none fixed inset-0 z-50">
+      <canvas ref={canvasRef} className="h-full w-full" />
     </div>
   );
 }
@@ -1140,13 +1185,14 @@ function FireworksCelebration({burst}: {burst: FireworksState | null}) {
 export default function Home() {
   const [selectedCategory, setSelectedCategory] = useState<CategoryKey | null>(null);
   const [selectedSubPath, setSelectedSubPath] = useState<SubPathKey | null>(null);
-  const [questionIndex, setQuestionIndex] = useState(0);
-  const [mysqlStepIndex, setMysqlStepIndex] = useState(0);
-  const [mysqlStepOrder, setMysqlStepOrder] = useState<number[]>([]);
-  const [mysqlOptionOrders, setMysqlOptionOrders] = useState<Record<string, number[]>>({});
-  const [questionOptionOrders, setQuestionOptionOrders] = useState<Record<string, number[]>>({});
-  const [mysqlResumeSnapshot, setMysqlResumeSnapshot] = useState<MysqlProgressSnapshot | null>(null);
-  const [mysqlSessionReady, setMysqlSessionReady] = useState(false);
+  const [courseStepIndex, setCourseStepIndex] = useState(0);
+  const [courseStepOrder, setCourseStepOrder] = useState<number[]>([]);
+  const [courseOptionOrders, setCourseOptionOrders] = useState<Record<string, number[]>>({});
+  const [courseResumeSnapshot, setCourseResumeSnapshot] = useState<CourseProgressSnapshot | null>(null);
+  const [courseSessionReady, setCourseSessionReady] = useState(false);
+  const [courseRoundIndex, setCourseRoundIndex] = useState(0);
+  const [courseRoundStartCredits, setCourseRoundStartCredits] = useState(0);
+  const [courseNextRoundSnapshot, setCourseNextRoundSnapshot] = useState<CourseProgressSnapshot | null>(null);
   const [answerRevealUsed, setAnswerRevealUsed] = useState(false);
   const [selectedChoice, setSelectedChoice] = useState<number | null>(null);
   const [queryDraft, setQueryDraft] = useState("");
@@ -1171,33 +1217,28 @@ export default function Home() {
     };
   }, []);
 
-  useEffect(() => {
-    if (!fireworksBurst) {
-      return;
-    }
-
-    const dismissTimer = window.setTimeout(() => {
-      setFireworksBurst(null);
-    }, 2400);
-
-    return () => {
-      window.clearTimeout(dismissTimer);
-    };
-  }, [fireworksBurst]);
+  const clearFireworks = useCallback(() => {
+    setFireworksBurst(null);
+  }, []);
 
   const triggerFireworks = (attemptCount: number, revealUsed: boolean) => {
     setFireworksBurst(buildFireworksState(attemptCount, revealUsed));
   };
 
+  const resetCourseRounds = () => {
+    setCourseRoundIndex(0);
+    setCourseRoundStartCredits(0);
+    setCourseNextRoundSnapshot(null);
+  };
+
   const resetProgress = () => {
     clearAdvanceTimer();
+    resetCourseRounds();
     setFireworksBurst(null);
-    setQuestionIndex(0);
-    setMysqlStepIndex(0);
-    setMysqlStepOrder([]);
-    setMysqlOptionOrders({});
-    setQuestionOptionOrders({});
-    setMysqlSessionReady(false);
+    setCourseStepIndex(0);
+    setCourseStepOrder([]);
+    setCourseOptionOrders({});
+    setCourseSessionReady(false);
     setAnswerRevealUsed(false);
     setSelectedChoice(null);
     setQueryDraft("");
@@ -1208,34 +1249,12 @@ export default function Home() {
     setCompleted(false);
   };
 
-  const createFreshMysqlSession = () => {
-    const nextStepOrder = buildMysqlStepOrder(MYSQL_COURSE);
-    const nextOptionOrders = buildMysqlOptionOrders(MYSQL_COURSE, nextStepOrder);
-
+  const continueCourseSession = (snapshot: CourseProgressSnapshot) => {
     clearAdvanceTimer();
     setFireworksBurst(null);
-    setMysqlStepOrder(nextStepOrder);
-    setMysqlOptionOrders(nextOptionOrders);
-    setMysqlStepIndex(0);
-    setSelectedChoice(null);
-    setQueryDraft("");
-    setFeedback(null);
-    setCredits(0);
-    setStreak(0);
-    setWrongAttempts(0);
-    setCompleted(false);
-    setMysqlSessionReady(true);
-    setAnswerRevealUsed(false);
-    setMysqlResumeSnapshot(null);
-    clearMysqlProgressSnapshot();
-  };
-
-  const continueMysqlSession = (snapshot: MysqlProgressSnapshot) => {
-    clearAdvanceTimer();
-    setFireworksBurst(null);
-    setMysqlStepOrder(snapshot.stepOrder);
-    setMysqlOptionOrders(snapshot.optionOrders);
-    setMysqlStepIndex(Math.min(snapshot.mysqlStepIndex, snapshot.stepOrder.length - 1));
+    setCourseStepOrder(snapshot.stepOrder);
+    setCourseOptionOrders(snapshot.optionOrders);
+    setCourseStepIndex(Math.min(snapshot.courseStepIndex, snapshot.stepOrder.length - 1));
     setSelectedChoice(null);
     setQueryDraft(snapshot.queryDraft);
     setFeedback(null);
@@ -1243,9 +1262,21 @@ export default function Home() {
     setStreak(snapshot.streak);
     setWrongAttempts(snapshot.wrongAttempts);
     setCompleted(false);
-    setMysqlSessionReady(true);
+    setCourseSessionReady(true);
     setAnswerRevealUsed(Boolean(snapshot.revealUsed));
-    setMysqlResumeSnapshot(null);
+    setCourseResumeSnapshot(null);
+    setCourseRoundIndex(snapshot.roundIndex);
+    setCourseRoundStartCredits(snapshot.roundStartCredits);
+    setCourseNextRoundSnapshot(null);
+  };
+
+  const startCourseRound = (course: Course, roundIndex: number) => {
+    continueCourseSession(buildCourseRoundSnapshot(course, roundIndex, {credits: 0, streak: 0}));
+  };
+
+  const createFreshCourseSession = (subPathId: SubPathKey, course: Course) => {
+    startCourseRound(course, 0);
+    clearCourseProgressSnapshot(subPathId);
   };
 
   const handleCategorySelect = (category: CategoryKey) => {
@@ -1253,12 +1284,10 @@ export default function Home() {
       clearAdvanceTimer,
       setSelectedCategory,
       setSelectedSubPath,
-      setQuestionIndex,
-      setMysqlStepIndex,
-      setMysqlStepOrder,
-      setMysqlOptionOrders,
-      setQuestionOptionOrders,
-      setMysqlSessionReady,
+      setCourseStepIndex,
+      setCourseStepOrder,
+      setCourseOptionOrders,
+      setCourseSessionReady,
       setAnswerRevealUsed,
       setSelectedChoice,
       setQueryDraft,
@@ -1270,6 +1299,7 @@ export default function Home() {
       category,
       null,
     );
+    resetCourseRounds();
     setFireworksBurst(null);
     toast.success(`You chose ${LEARNING_TRACKS[category].title}. Now pick a database.`);
   };
@@ -1287,25 +1317,15 @@ export default function Home() {
       return;
     }
 
-    if (subPathId === "mysql" && subPath.mysqlCourse) {
-      const savedSnapshot = readMysqlProgressSnapshot();
-      if (savedSnapshot && !savedSnapshot.completed) {
-        setMysqlResumeSnapshot(savedSnapshot);
-        toast.success(
-          `You left off at ${describeMysqlStep(subPath.mysqlCourse.steps[savedSnapshot.stepOrder[savedSnapshot.mysqlStepIndex]] ?? null)}. Continue or start fresh.`,
-        );
-        return;
-      }
-
-      createFreshMysqlSession();
-      toast.success(`Great choice. Let's learn ${subPath.title}.`);
+    const savedSnapshot = readCourseProgressSnapshot(subPathId, subPath.course);
+    if (savedSnapshot && !savedSnapshot.completed) {
+      const {round, step} = getSnapshotStep(subPath.course, savedSnapshot);
+      setCourseResumeSnapshot(savedSnapshot);
+      toast.success(`You left off at ${describeCourseStep(step, round)}. Continue or start fresh.`);
       return;
     }
 
-    if (subPath.questions) {
-      setQuestionOptionOrders(buildQuestionOptionOrders(subPath.questions));
-    }
-
+    createFreshCourseSession(subPathId, subPath.course);
     toast.success(`Great choice. Let's learn ${subPath.title}.`);
   };
 
@@ -1314,12 +1334,10 @@ export default function Home() {
       clearAdvanceTimer,
       setSelectedCategory,
       setSelectedSubPath,
-      setQuestionIndex,
-      setMysqlStepIndex,
-      setMysqlStepOrder,
-      setMysqlOptionOrders,
-      setQuestionOptionOrders,
-      setMysqlSessionReady,
+      setCourseStepIndex,
+      setCourseStepOrder,
+      setCourseOptionOrders,
+      setCourseSessionReady,
       setAnswerRevealUsed,
       setSelectedChoice,
       setQueryDraft,
@@ -1331,6 +1349,7 @@ export default function Home() {
       null,
       null,
     );
+    resetCourseRounds();
     setFireworksBurst(null);
   };
 
@@ -1340,44 +1359,34 @@ export default function Home() {
   };
 
   const currentSubPath = getSubPath(selectedCategory, selectedSubPath);
-  const currentMysqlStepIndex =
-    currentSubPath?.id === "mysql" && mysqlSessionReady ? mysqlStepOrder[mysqlStepIndex] ?? null : null;
-  const currentMysqlStep =
-    currentSubPath?.id === "mysql" && currentMysqlStepIndex !== null
-      ? currentSubPath?.mysqlCourse?.steps[currentMysqlStepIndex] ?? null
-      : null;
-  const currentQuestion = currentSubPath?.id !== "mysql" ? currentSubPath?.questions?.[questionIndex] ?? null : null;
-  const totalQuestions = currentSubPath?.questions?.length ?? 0;
-  const totalMysqlSteps = currentSubPath?.mysqlCourse?.steps.length ?? 0;
-  const isMysqlCourse = currentSubPath?.id === "mysql" && Boolean(currentSubPath?.mysqlCourse);
-  const progress = isMysqlCourse
-    ? ((mysqlStepIndex + (completed ? 1 : 0)) / Math.max(totalMysqlSteps, 1)) * 100
-    : currentSubPath
-      ? ((questionIndex + (completed ? 1 : 0)) / Math.max(totalQuestions, 1)) * 100
-      : 0;
-  const currentLessonLabel = isMysqlCourse && currentMysqlStep ? describeMysqlStep(currentMysqlStep) : `Question ${questionIndex + 1} of ${totalQuestions}`;
-  const currentMysqlOptionOrder =
-    currentMysqlStep?.kind === "mcq"
-      ? mysqlOptionOrders[String(currentMysqlStepIndex ?? -1)] ?? currentMysqlStep.options.map((_, index) => index)
+  const currentCourse = currentSubPath?.course ?? null;
+  const currentCourseStepIndex =
+    currentSubPath && courseSessionReady ? courseStepOrder[courseStepIndex] ?? null : null;
+  const currentCourseRound = currentCourse?.rounds[courseRoundIndex] ?? null;
+  const nextCourseRound = courseNextRoundSnapshot ? currentCourse?.rounds[courseNextRoundSnapshot.roundIndex] ?? null : null;
+  const lastCourseRoundIndex = (currentCourse?.rounds.length ?? 1) - 1;
+  const currentCourseStep =
+    currentCourseStepIndex !== null ? currentCourseRound?.steps[currentCourseStepIndex] ?? null : null;
+  const totalCourseSteps = currentCourseRound?.steps.length ?? 0;
+  const hasCourse = Boolean(currentSubPath);
+  const progress = hasCourse
+    ? ((courseStepIndex + (completed ? 1 : 0)) / Math.max(totalCourseSteps, 1)) * 100
+    : 0;
+  const currentLessonLabel = currentCourseStep ? describeCourseStep(currentCourseStep) : "";
+  const currentCourseOptionOrder =
+    currentCourseStep?.kind === "mcq"
+      ? courseOptionOrders[String(currentCourseStepIndex ?? -1)] ?? currentCourseStep.options.map((_, index) => index)
       : [];
-  const currentQuestionOptionOrder =
-    currentQuestion && currentSubPath?.id !== "mysql"
-      ? questionOptionOrders[String(questionIndex)] ?? currentQuestion.options.map((_, index) => index)
-      : [];
-  const needHint = isMysqlCourse
-    ? currentMysqlStep?.hint ?? null
-    : currentQuestion && wrongAttempts >= 2
-      ? currentQuestion.hint
-      : null;
-  const canLoadMysqlHint = !isMysqlCourse || currentMysqlStep?.kind !== "query" ? true : wrongAttempts >= 5;
+  const needHint = currentCourseStep?.hint ?? null;
+  const canLoadQueryHint = currentCourseStep?.kind !== "query" ? true : wrongAttempts >= 5;
   const canRevealAnswer = !completed && wrongAttempts >= 10 && !answerRevealUsed;
-  const mysqlResumeStep = mysqlResumeSnapshot
-    ? MYSQL_COURSE.steps[mysqlResumeSnapshot.stepOrder[mysqlResumeSnapshot.mysqlStepIndex] ?? -1] ?? null
-    : null;
-  const showMysqlResumePrompt =
-    currentSubPath?.id === "mysql" && Boolean(mysqlResumeSnapshot) && !mysqlSessionReady && !completed;
-  const resumeStepLabel = describeMysqlStep(mysqlResumeStep);
-  const currentMedal = getCreditMedal(credits);
+  const courseResumePoint =
+    courseResumeSnapshot && currentCourse ? getSnapshotStep(currentCourse, courseResumeSnapshot) : null;
+  const showCourseResumePrompt = Boolean(currentSubPath) && Boolean(courseResumeSnapshot) && !courseSessionReady && !completed;
+  const resumeStepLabel = describeCourseStep(courseResumePoint?.step ?? null, courseResumePoint?.round);
+  // Medals are earned per round; credits keep adding up across rounds.
+  const roundCredits = hasCourse ? credits - courseRoundStartCredits : credits;
+  const currentMedal = getCreditMedal(roundCredits);
 
   const finishCurrentCourse = (message: string) => {
     setCompleted(true);
@@ -1387,27 +1396,54 @@ export default function Home() {
       kind: "correct",
       message,
     });
-    clearMysqlProgressSnapshot();
-    setMysqlSessionReady(false);
-    setMysqlResumeSnapshot(null);
+    if (selectedSubPath) {
+      clearCourseProgressSnapshot(selectedSubPath);
+    }
+    setCourseSessionReady(false);
+    setCourseResumeSnapshot(null);
   };
 
-  const advanceMysqlStep = () => {
+  const advanceCourseStep = (nextCredits: number, nextStreak: number, delay: number) => {
     clearAdvanceTimer();
     advanceTimerRef.current = window.setTimeout(() => {
-      const isFinalStep = mysqlStepIndex === totalMysqlSteps - 1;
-      if (isFinalStep) {
-        finishCurrentCourse("Path complete. You unlocked the full MySQL course.");
-      } else {
-        setMysqlStepIndex((value) => value + 1);
-        setSelectedChoice(null);
-        setQueryDraft("");
-        setFeedback(null);
-        setWrongAttempts(0);
-        setAnswerRevealUsed(false);
-      }
       advanceTimerRef.current = null;
-    }, 950);
+      setSelectedChoice(null);
+      setQueryDraft("");
+      setWrongAttempts(0);
+      setAnswerRevealUsed(false);
+
+      const isFinalStep = courseStepIndex === totalCourseSteps - 1;
+      if (!isFinalStep) {
+        setCourseStepIndex((value) => value + 1);
+        setFeedback(null);
+        return;
+      }
+
+      const nextRoundIndex = courseRoundIndex + 1;
+      if (nextRoundIndex <= lastCourseRoundIndex && currentCourse && selectedSubPath) {
+        // Save the next round right away so leaving now resumes at its first question.
+        const nextRoundSnapshot = buildCourseRoundSnapshot(currentCourse, nextRoundIndex, {
+          credits: nextCredits,
+          streak: nextStreak,
+        });
+        const finishedRoundTitle = currentCourseRound?.title ?? "Round";
+        const unlockedRoundTitle = currentCourse.rounds[nextRoundIndex].title;
+
+        saveCourseProgressSnapshot(selectedSubPath, nextRoundSnapshot);
+        setCourseNextRoundSnapshot(nextRoundSnapshot);
+        setCourseSessionReady(false);
+        setFeedback({
+          kind: "correct",
+          message: `${finishedRoundTitle} complete. ${unlockedRoundTitle} is now unlocked.`,
+        });
+        toast.success(`${finishedRoundTitle} complete. ${unlockedRoundTitle} unlocked.`);
+        return;
+      }
+
+      finishCurrentCourse(
+        `${currentSubPath?.title ?? "Course"} complete. You finished every round of practice.`,
+      );
+    }, delay);
   };
 
   const handleRevealAnswer = () => {
@@ -1415,59 +1451,45 @@ export default function Home() {
       return;
     }
 
-    if (isMysqlCourse && currentMysqlStep) {
+    if (hasCourse && currentCourseStep) {
       setAnswerRevealUsed(true);
-      if (currentMysqlStep.kind === "query") {
-        setQueryDraft(currentMysqlStep.acceptedAnswers[0] ?? currentMysqlStep.starter);
+      if (currentCourseStep.kind === "query") {
+        setQueryDraft(currentCourseStep.acceptedAnswers[0] ?? currentCourseStep.starter);
         setSelectedChoice(null);
       } else {
-        const correctDisplayIndex = currentMysqlOptionOrder.findIndex(
-          (optionIndex) => optionIndex === currentMysqlStep.correctIndex,
+        const correctDisplayIndex = currentCourseOptionOrder.findIndex(
+          (optionIndex) => optionIndex === currentCourseStep.correctIndex,
         );
         setSelectedChoice(correctDisplayIndex >= 0 ? correctDisplayIndex : null);
       }
 
       const revealedAnswer =
-        currentMysqlStep.kind === "mcq"
-          ? currentMysqlStep.options[currentMysqlStep.correctIndex]
-          : currentMysqlStep.acceptedAnswers[0] ?? currentMysqlStep.starter;
+        currentCourseStep.kind === "mcq"
+          ? currentCourseStep.options[currentCourseStep.correctIndex]
+          : currentCourseStep.acceptedAnswers[0] ?? currentCourseStep.starter;
 
       setFeedback({
         kind: "revealed",
         message:
-          currentMysqlStep.kind === "mcq"
+          currentCourseStep.kind === "mcq"
             ? `Revealed answer: ${revealedAnswer}. Select that option to continue, but this question earns no credits now.`
             : "Revealed answer loaded. Use it to continue, but this question earns no credits now.",
-      });
-      toast("Answer revealed. No credits will be awarded for this question.");
-      return;
-    }
-
-    if (currentQuestion) {
-      setAnswerRevealUsed(true);
-      const correctDisplayIndex = currentQuestionOptionOrder.findIndex(
-        (optionIndex) => optionIndex === currentQuestion.correctIndex,
-      );
-      setSelectedChoice(correctDisplayIndex >= 0 ? correctDisplayIndex : null);
-      setFeedback({
-        kind: "revealed",
-        message: `Revealed answer: ${currentQuestion.options[currentQuestion.correctIndex]}. Select that option to continue, but this question earns no credits now.`,
       });
       toast("Answer revealed. No credits will be awarded for this question.");
     }
   };
 
   const handleLoadStarter = () => {
-    if (!currentMysqlStep || currentMysqlStep.kind !== "query") {
+    if (!currentCourseStep || currentCourseStep.kind !== "query") {
       return;
     }
 
-    if (!canLoadMysqlHint) {
+    if (!canLoadQueryHint) {
       toast.error("Try your own answer 5 times first.");
       return;
     }
 
-    setQueryDraft(buildQueryHintSnippet(currentMysqlStep.acceptedAnswers[0] ?? currentMysqlStep.starter));
+    setQueryDraft(buildStepHintSnippet(currentCourseStep));
     toast.success("Hint loaded.");
   };
 
@@ -1476,18 +1498,18 @@ export default function Home() {
       return;
     }
 
-    if (isMysqlCourse && currentMysqlStep?.kind === "mcq") {
+    if (hasCourse && currentCourseStep?.kind === "mcq") {
       setSelectedChoice(choiceIndex);
-      const sourceStepIndex = currentMysqlStepIndex;
+      const sourceStepIndex = currentCourseStepIndex;
       const optionOrder =
         sourceStepIndex !== null
-          ? mysqlOptionOrders[String(sourceStepIndex)] ?? currentMysqlStep.options.map((_, index) => index)
-          : currentMysqlStep.options.map((_, index) => index);
+          ? courseOptionOrders[String(sourceStepIndex)] ?? currentCourseStep.options.map((_, index) => index)
+          : currentCourseStep.options.map((_, index) => index);
       const actualChoiceIndex = optionOrder[choiceIndex];
-      const correctAnswer = currentMysqlStep.options[currentMysqlStep.correctIndex];
+      const correctAnswer = currentCourseStep.options[currentCourseStep.correctIndex];
       const reward = calculateQuestionCredits(10, wrongAttempts, answerRevealUsed);
 
-      if (actualChoiceIndex === currentMysqlStep.correctIndex) {
+      if (actualChoiceIndex === currentCourseStep.correctIndex) {
         const nextStreak = answerRevealUsed ? streak : streak + 1;
         const bonus = !answerRevealUsed && nextStreak % 3 === 0 && reward > 0 ? 5 : 0;
         const earned = reward + bonus;
@@ -1516,13 +1538,13 @@ export default function Home() {
                 : `Correct. +${earned} credits.`,
         );
         triggerFireworks(wrongAttempts, answerRevealUsed);
-        advanceMysqlStep();
+        advanceCourseStep(credits + earned, nextStreak, 950);
         return;
       }
 
       if (answerRevealUsed) {
         const correctDisplayIndex = optionOrder.findIndex(
-          (optionIndex) => optionIndex === currentMysqlStep.correctIndex,
+          (optionIndex) => optionIndex === currentCourseStep.correctIndex,
         );
         setSelectedChoice(correctDisplayIndex >= 0 ? correctDisplayIndex : null);
         setFeedback({
@@ -1537,84 +1559,7 @@ export default function Home() {
       setWrongAttempts((value) => value + 1);
       setFeedback({
         kind: "wrong",
-        message: "Not quite. Try again and think about the MySQL basics.",
-      });
-      toast.error("Not quite. Try again.");
-      return;
-    }
-
-    if (!isMysqlCourse && currentQuestion) {
-      setSelectedChoice(choiceIndex);
-      const optionOrder =
-        questionOptionOrders[String(questionIndex)] ?? currentQuestion.options.map((_, index) => index);
-      const actualChoiceIndex = optionOrder[choiceIndex];
-      const correctAnswer = currentQuestion.options[currentQuestion.correctIndex];
-      const reward = calculateQuestionCredits(10, wrongAttempts, answerRevealUsed);
-
-      if (actualChoiceIndex === currentQuestion.correctIndex) {
-        const nextStreak = answerRevealUsed ? streak : streak + 1;
-        const bonus = !answerRevealUsed && nextStreak % 3 === 0 && reward > 0 ? 5 : 0;
-        const earned = reward + bonus;
-        const isFinalQuestion = questionIndex === (currentSubPath?.questions?.length ?? 1) - 1;
-
-        setCredits((value) => value + earned);
-        setStreak(nextStreak);
-        setWrongAttempts(0);
-        setAnswerRevealUsed(false);
-        setFeedback({
-          kind: answerRevealUsed ? "revealed" : "correct",
-          message: answerRevealUsed
-            ? "Revealed answer accepted. No credits were awarded for this question."
-            : bonus
-              ? `Correct. +${earned} credits with a streak bonus.`
-              : reward < 10
-                ? `Correct. +${earned} credits. This one is worth less because it took a few tries.`
-                : `Correct. +${earned} credits.`,
-        });
-        toast.success(
-          answerRevealUsed
-            ? "Answer revealed. No credits earned for this question."
-            : bonus
-              ? `Correct. +${earned} credits and a streak bonus.`
-              : reward < 10
-                ? `Correct. +${earned} credits.`
-                : `Correct. +${earned} credits.`,
-        );
-        triggerFireworks(wrongAttempts, answerRevealUsed);
-
-        clearAdvanceTimer();
-        advanceTimerRef.current = window.setTimeout(() => {
-          if (isFinalQuestion) {
-            finishCurrentCourse("Path complete. You unlocked the final result.");
-          } else {
-            setQuestionIndex((value) => value + 1);
-            setSelectedChoice(null);
-            setFeedback(null);
-            setWrongAttempts(0);
-          }
-          advanceTimerRef.current = null;
-        }, 950);
-        return;
-      }
-
-      if (answerRevealUsed) {
-        const correctDisplayIndex = optionOrder.findIndex(
-          (optionIndex) => optionIndex === currentQuestion.correctIndex,
-        );
-        setSelectedChoice(correctDisplayIndex >= 0 ? correctDisplayIndex : null);
-        setFeedback({
-          kind: "revealed",
-          message: `The revealed answer is ${correctAnswer}. Select that option to continue, but this question does not earn credits now.`,
-        });
-        toast("The answer is already revealed.");
-        return;
-      }
-
-      setStreak(0);
-      setWrongAttempts((value) => value + 1);
-      setFeedback({
-        kind: "wrong",
-        message: "Not quite. Try again and think about the database style.",
+        message: "Not quite. Try again and think about the concept.",
       });
       toast.error("Not quite. Try again.");
     }
@@ -1623,7 +1568,7 @@ export default function Home() {
   const handleQuerySubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
-    if (!isMysqlCourse || currentMysqlStep?.kind !== "query" || completed || feedback?.kind === "correct") {
+    if (!hasCourse || currentCourseStep?.kind !== "query" || completed || feedback?.kind === "correct") {
       return;
     }
 
@@ -1632,9 +1577,7 @@ export default function Home() {
       return;
     }
 
-    const isCorrect = currentMysqlStep.acceptedAnswers.some((answer) =>
-      matchesMysqlQuery(answer, queryDraft),
-    );
+    const isCorrect = matchesCourseQuery(currentCourseStep, queryDraft);
     const reward = calculateQuestionCredits(15, wrongAttempts, answerRevealUsed);
 
     if (!isCorrect) {
@@ -1685,33 +1628,21 @@ export default function Home() {
             : `Created. +${earned} credits.`,
     );
     triggerFireworks(wrongAttempts, answerRevealUsed);
-
-    clearAdvanceTimer();
-    advanceTimerRef.current = window.setTimeout(() => {
-      const isFinalStep = mysqlStepIndex === totalMysqlSteps - 1;
-      if (isFinalStep) {
-        finishCurrentCourse("MySQL course complete. You built queries across DDL, DML, DCL, TCL, and DQL.");
-      } else {
-        setMysqlStepIndex((value) => value + 1);
-        setSelectedChoice(null);
-        setQueryDraft("");
-        setFeedback(null);
-        setWrongAttempts(0);
-      }
-      advanceTimerRef.current = null;
-    }, 1100);
+    advanceCourseStep(credits + earned, nextStreak, 1100);
   };
 
   useEffect(() => {
-    if (!isMysqlCourse || !mysqlSessionReady || !currentMysqlStep || completed) {
+    if (!hasCourse || !selectedSubPath || !courseSessionReady || !currentCourseStep || completed) {
       return;
     }
 
-    const stepOrder = mysqlStepOrder.length ? mysqlStepOrder : MYSQL_COURSE.steps.map((_, index) => index);
-    saveMysqlProgressSnapshot({
+    const stepOrder = courseStepOrder.length ? courseStepOrder : currentCourseRound?.steps.map((_, index) => index) ?? [];
+    saveCourseProgressSnapshot(selectedSubPath, {
+      roundIndex: courseRoundIndex,
+      roundStartCredits: courseRoundStartCredits,
       stepOrder,
-      optionOrders: mysqlOptionOrders,
-      mysqlStepIndex,
+      optionOrders: courseOptionOrders,
+      courseStepIndex,
       queryDraft,
       revealUsed: answerRevealUsed,
       credits,
@@ -1722,12 +1653,16 @@ export default function Home() {
   }, [
     completed,
     credits,
-    currentMysqlStep,
-    isMysqlCourse,
-    mysqlOptionOrders,
-    mysqlSessionReady,
-    mysqlStepIndex,
-    mysqlStepOrder,
+    currentCourseRound,
+    currentCourseStep,
+    hasCourse,
+    selectedSubPath,
+    courseOptionOrders,
+    courseRoundIndex,
+    courseRoundStartCredits,
+    courseSessionReady,
+    courseStepIndex,
+    courseStepOrder,
     queryDraft,
     answerRevealUsed,
     streak,
@@ -1736,7 +1671,7 @@ export default function Home() {
 
   return (
     <>
-      <FireworksCelebration burst={fireworksBurst} />
+      <FireworksCelebration burst={fireworksBurst} onDone={clearFireworks} />
       <Toaster
         position="top-right"
         toastOptions={{
@@ -1843,14 +1778,11 @@ export default function Home() {
                     Completed
                   </span>
                   <h2 className="mt-5 text-3xl font-semibold text-white sm:text-4xl">
-                    {currentSubPath.id === "mysql"
-                      ? "Great work. You completed the full MySQL course."
-                      : `Great work. You completed ${currentSubPath.title}.`}
+                    Great work. You completed the full {currentSubPath.title} course.
                   </h2>
                   <p className="mt-4 max-w-2xl text-base leading-7 text-slate-300">
-                    {currentSubPath.id === "mysql"
-                      ? "You finished 10 basics questions and 50 query-writing drills across DDL, DML, DCL, TCL, and DQL. That is a real MySQL win."
-                      : "You stayed on track, corrected mistakes, and kept moving through the lesson. That is exactly how strong database intuition grows."}
+                    You finished all {currentSubPath.course.rounds.length} rounds of {currentSubPath.title}
+                    practice, from the basics through to harder, real-world queries. That is a real win.
                   </p>
                   <div className="mt-8 grid gap-3 sm:grid-cols-3">
                     <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
@@ -1903,21 +1835,24 @@ export default function Home() {
                       type="button"
                       onClick={() => {
                         if (selectedSubPath) {
-                          if (currentSubPath?.id === "mysql") {
-                            createFreshMysqlSession();
-                            setCompleted(false);
-                            toast.success(`Restarted ${currentSubPath.title}.`);
-                            return;
-                          }
-
-                          resetProgress();
-                          setSelectedSubPath(selectedSubPath);
+                          createFreshCourseSession(selectedSubPath, currentSubPath.course);
+                          setCompleted(false);
                           toast.success(`Restarted ${currentSubPath.title}.`);
                         }
                       }}
                       className={`rounded-full bg-gradient-to-r ${currentSubPath.gradient} px-5 py-3 text-sm font-semibold text-slate-950 transition hover:brightness-110`}
                     >
                       Play again
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        startCourseRound(currentSubPath.course, lastCourseRoundIndex);
+                        toast.success(`Replaying ${currentSubPath.course.rounds[lastCourseRoundIndex].title}.`);
+                      }}
+                      className="rounded-full border border-white/10 bg-white/5 px-5 py-3 text-sm font-semibold text-slate-100 transition hover:bg-white/10"
+                    >
+                      Replay {currentSubPath.course.rounds[lastCourseRoundIndex].title}
                     </button>
                     <button
                       type="button"
@@ -1974,7 +1909,125 @@ export default function Home() {
                 </div>
               </div>
             </section>
-          ) : showMysqlResumePrompt && currentSubPath ? (
+          ) : courseNextRoundSnapshot && nextCourseRound && currentSubPath ? (
+            <section
+              className={`relative w-full overflow-hidden rounded-[2rem] border ${currentSubPath.border} ${currentSubPath.panel} p-6 shadow-2xl sm:p-8 lg:p-10`}
+            >
+              <div
+                className={`absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${currentSubPath.gradient}`}
+              />
+
+              <div className="grid gap-8 lg:grid-cols-[1.1fr_0.9fr] lg:items-start">
+                <div>
+                  <span
+                    className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-[0.28em] ${currentSubPath.chip}`}
+                  >
+                    {currentCourseRound?.title} complete
+                  </span>
+                  <h2 className="mt-5 text-3xl font-semibold text-white sm:text-4xl">
+                    You cleared {currentCourseRound?.title}. {nextCourseRound.title} is unlocked.
+                  </h2>
+                  <p className="mt-4 max-w-2xl text-base leading-7 text-slate-300">
+                    {nextCourseRound.title} has {nextCourseRound.summary} Your credits and streak carry over.
+                  </p>
+
+                  <div className="mt-8 grid gap-3 sm:grid-cols-3">
+                    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                      <p className="text-xs uppercase tracking-[0.24em] text-slate-400">
+                        Round credits
+                      </p>
+                      <p className="mt-2 text-2xl font-semibold text-white">
+                        {roundCredits}
+                      </p>
+                    </div>
+                    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                      <p className="text-xs uppercase tracking-[0.24em] text-slate-400">
+                        Total credits
+                      </p>
+                      <p className="mt-2 text-2xl font-semibold text-white">
+                        {credits}
+                      </p>
+                    </div>
+                    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                      <p className="text-xs uppercase tracking-[0.24em] text-slate-400">
+                        Streak
+                      </p>
+                      <p className="mt-2 text-2xl font-semibold text-white">
+                        {streak}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className={`mt-6 rounded-3xl border ${currentMedal.border} bg-gradient-to-br ${currentMedal.color} p-[1px]`}>
+                    <div className="rounded-[1.45rem] bg-slate-950/90 p-5">
+                      <p className="text-xs uppercase tracking-[0.28em] text-slate-400">
+                        {currentCourseRound?.title} medal
+                      </p>
+                      <div className="mt-3 flex flex-wrap items-center gap-3">
+                        <span className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white">
+                          {currentMedal.tier}
+                        </span>
+                        <p className="text-sm leading-6 text-slate-200">
+                          {currentMedal.description}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-8 flex flex-wrap gap-3">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        continueCourseSession(courseNextRoundSnapshot);
+                        toast.success(`${nextCourseRound.title} started. Good luck.`);
+                      }}
+                      className={`rounded-full bg-gradient-to-r ${currentSubPath.gradient} px-5 py-3 text-sm font-semibold text-slate-950 transition hover:brightness-110`}
+                    >
+                      Start {nextCourseRound.title}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={goBackToSubPaths}
+                      className="rounded-full border border-white/10 bg-white/5 px-5 py-3 text-sm font-semibold text-slate-100 transition hover:bg-white/10"
+                    >
+                      Choose another database
+                    </button>
+                    <button
+                      type="button"
+                      onClick={goBackToCategories}
+                      className="rounded-full border border-white/10 bg-white/5 px-5 py-3 text-sm font-semibold text-slate-100 transition hover:bg-white/10"
+                    >
+                      Choose another path
+                    </button>
+                  </div>
+                </div>
+
+                <div className="rounded-[1.75rem] border border-white/10 bg-white/5 p-6">
+                  <p className="text-sm uppercase tracking-[0.24em] text-slate-400">
+                    Up next in {nextCourseRound.title}
+                  </p>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    {nextCourseRound.topics.map((topic) => (
+                      <span
+                        key={topic}
+                        className="rounded-full border border-white/10 bg-slate-950/70 px-3 py-1 text-sm text-slate-100"
+                      >
+                        {topic}
+                      </span>
+                    ))}
+                  </div>
+                  <div className="mt-4 rounded-3xl border border-white/10 bg-slate-950/70 p-5">
+                    <p className="text-lg font-semibold text-white">
+                      Your progress is saved.
+                    </p>
+                    <p className="mt-3 text-sm leading-6 text-slate-300">
+                      If you leave now, you will pick up at the first question of {nextCourseRound.title} next time.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </section>
+          ) : showCourseResumePrompt && currentSubPath ? (
             <section
               className={`relative w-full overflow-hidden rounded-[2rem] border ${currentSubPath.border} ${currentSubPath.panel} p-6 shadow-2xl sm:p-8 lg:p-10`}
             >
@@ -2010,7 +2063,7 @@ export default function Home() {
                         Credits
                       </p>
                       <p className="mt-2 text-2xl font-semibold text-white">
-                        {mysqlResumeSnapshot?.credits ?? 0}
+                        {courseResumeSnapshot?.credits ?? 0}
                       </p>
                     </div>
                     <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
@@ -2018,7 +2071,7 @@ export default function Home() {
                         Streak
                       </p>
                       <p className="mt-2 text-2xl font-semibold text-white">
-                        {mysqlResumeSnapshot?.streak ?? 0}
+                        {courseResumeSnapshot?.streak ?? 0}
                       </p>
                     </div>
                   </div>
@@ -2027,8 +2080,8 @@ export default function Home() {
                     <button
                       type="button"
                       onClick={() => {
-                        if (mysqlResumeSnapshot) {
-                          continueMysqlSession(mysqlResumeSnapshot);
+                        if (courseResumeSnapshot) {
+                          continueCourseSession(courseResumeSnapshot);
                           toast.success(`Welcome back. Continuing from ${resumeStepLabel}.`);
                         }
                       }}
@@ -2039,8 +2092,10 @@ export default function Home() {
                     <button
                       type="button"
                       onClick={() => {
-                        createFreshMysqlSession();
-                        toast.success("Starting fresh from the first MySQL question.");
+                        if (selectedSubPath && currentSubPath) {
+                          createFreshCourseSession(selectedSubPath, currentSubPath.course);
+                          toast.success("Starting fresh from the first question.");
+                        }
                       }}
                       className="rounded-full border border-white/10 bg-white/5 px-5 py-3 text-sm font-semibold text-slate-100 transition hover:bg-white/10"
                     >
@@ -2078,7 +2133,7 @@ export default function Home() {
                 </div>
               </div>
             </section>
-          ) : currentSubPath?.id === "mysql" && currentMysqlStep ? (
+          ) : currentSubPath && currentCourseStep ? (
             <section
               className={`relative w-full overflow-hidden rounded-[2rem] border ${currentSubPath.border} ${currentSubPath.panel} p-6 shadow-2xl sm:p-8 lg:p-10`}
             >
@@ -2092,7 +2147,7 @@ export default function Home() {
                     <span
                       className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-[0.28em] ${currentSubPath.chip}`}
                     >
-                      MySQL Course
+                      {currentSubPath.title} · {currentCourseRound?.title}
                     </span>
                     <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-300">
                       {currentLessonLabel}
@@ -2107,7 +2162,7 @@ export default function Home() {
 
                   <div className="mt-6">
                     <div className="flex items-center justify-between gap-4 text-sm text-slate-400">
-                      <span>Course progress</span>
+                      <span>{currentCourseRound?.title} progress</span>
                       <span>{Math.round(progress)}%</span>
                     </div>
                     <div className="mt-2 h-2 overflow-hidden rounded-full bg-white/10">
@@ -2119,18 +2174,18 @@ export default function Home() {
                   </div>
 
                   <h1 className="mt-7 text-3xl font-semibold tracking-tight text-white sm:text-4xl">
-                    {currentMysqlStep.prompt}
+                    {currentCourseStep.prompt}
                   </h1>
                   <p className="mt-4 max-w-2xl text-base leading-7 text-slate-300">
-                    {currentMysqlStep.kind === "mcq"
-                      ? "Choose the best answer. Correct answers move you into the next MySQL lesson."
-                      : "Write the MySQL query for the prompt below, then submit it to check your work."}
+                    {currentCourseStep.kind === "mcq"
+                      ? "Choose the best answer. Correct answers move you into the next lesson."
+                      : `Write the ${currentSubPath.title} query for the prompt below, then submit it to check your work.`}
                   </p>
 
-                  {currentMysqlStep.kind === "mcq" ? (
+                  {currentCourseStep.kind === "mcq" ? (
                     <div className="mt-8 grid gap-3 sm:grid-cols-2">
-                      {currentMysqlOptionOrder.map((optionIndex, displayIndex) => {
-                        const option = currentMysqlStep.options[optionIndex];
+                      {currentCourseOptionOrder.map((optionIndex, displayIndex) => {
+                        const option = currentCourseStep.options[optionIndex];
                         if (!option) {
                           return null;
                         }
@@ -2169,10 +2224,10 @@ export default function Home() {
                         <button
                           type="button"
                           onClick={handleLoadStarter}
-                          disabled={!canLoadMysqlHint}
+                          disabled={!canLoadQueryHint}
                           className="rounded-full border border-white/10 bg-white/5 px-5 py-3 text-sm font-semibold text-slate-100 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-white/5"
                         >
-                          {canLoadMysqlHint ? "Load hint" : "Load hint after 5 tries"}
+                          {canLoadQueryHint ? "Load hint" : "Load hint after 5 tries"}
                         </button>
                         {canRevealAnswer && (
                           <button
@@ -2184,7 +2239,7 @@ export default function Home() {
                           </button>
                         )}
                       </div>
-                      {!canLoadMysqlHint && (
+                      {!canLoadQueryHint && (
                         <p className="text-sm text-slate-400">
                           Keep trying on your own — the hint unlocks after 5 attempts.
                         </p>
@@ -2197,7 +2252,7 @@ export default function Home() {
                     </form>
                   )}
 
-                  {currentMysqlStep.kind === "mcq" && canRevealAnswer && (
+                  {currentCourseStep.kind === "mcq" && canRevealAnswer && (
                     <div className="mt-4 flex flex-wrap gap-3">
                       <button
                         type="button"
@@ -2229,7 +2284,7 @@ export default function Home() {
                     </p>
                     {feedback?.kind === "correct" && (
                       <p className="mt-3 text-sm leading-6 opacity-80">
-                        Nice work. The next MySQL step will appear automatically.
+                        Nice work. The next step will appear automatically.
                       </p>
                     )}
                     {feedback?.kind === "wrong" && (
@@ -2252,7 +2307,7 @@ export default function Home() {
                       Learning tip
                     </p>
                     <p className="mt-4 text-sm leading-7 text-slate-200">
-                      {needHint ?? currentMysqlStep.hint}
+                      {needHint ?? currentCourseStep.hint}
                     </p>
                   </div>
 
@@ -2261,7 +2316,7 @@ export default function Home() {
                       Why this matters
                     </p>
                     <p className="mt-4 text-sm leading-7 text-slate-200">
-                      {currentMysqlStep.explanation}
+                      {currentCourseStep.explanation}
                     </p>
                   </div>
 
@@ -2275,7 +2330,7 @@ export default function Home() {
                           Topic
                         </p>
                         <p className="mt-2 text-lg font-semibold text-white">
-                          {currentMysqlStep.kind === "mcq" ? "Basics" : currentMysqlStep.topicTitle}
+                          {currentCourseStep.kind === "mcq" ? currentCourseStep.sectionTitle : currentCourseStep.topicTitle}
                         </p>
                       </div>
                       <div className="rounded-2xl border border-white/10 bg-slate-950/60 p-4">
@@ -2283,196 +2338,15 @@ export default function Home() {
                           Step
                         </p>
                         <p className="mt-2 text-lg font-semibold text-white">
-                          {currentMysqlStep.stepNumber} / {currentMysqlStep.stepTotal}
+                          {currentCourseStep.stepNumber} / {currentCourseStep.stepTotal}
                         </p>
                       </div>
                     </div>
                     <p className="mt-4 text-sm leading-6 text-slate-300">
-                      The MySQL course starts with 10 concept checks and then moves
-                      into 50 query-writing drills across DDL, DML, DCL, TCL, and DQL.
-                    </p>
-                  </div>
-
-                  <div className="flex gap-3">
-                    <button
-                      type="button"
-                      onClick={goBackToSubPaths}
-                      className="flex-1 rounded-full border border-white/10 bg-white/5 px-5 py-3 text-sm font-semibold text-slate-100 transition hover:bg-white/10"
-                    >
-                      Change database
-                    </button>
-                    <button
-                      type="button"
-                      onClick={goBackToCategories}
-                      className="flex-1 rounded-full border border-white/10 bg-white/5 px-5 py-3 text-sm font-semibold text-slate-100 transition hover:bg-white/10"
-                    >
-                      Change path
-                    </button>
-                  </div>
-                </aside>
-              </div>
-            </section>
-          ) : currentSubPath && currentSubPath.id !== "mysql" ? (
-            <section
-              className={`relative w-full overflow-hidden rounded-[2rem] border ${currentSubPath.border} ${currentSubPath.panel} p-6 shadow-2xl sm:p-8 lg:p-10`}
-            >
-              <div
-                className={`absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${currentSubPath.gradient}`}
-              />
-
-              <div className="grid gap-8 lg:grid-cols-[1.15fr_0.85fr] lg:items-start">
-                <div>
-                  <div className="flex flex-wrap items-center gap-3">
-                    <span
-                      className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-[0.28em] ${currentSubPath.chip}`}
-                    >
-                      {LEARNING_TRACKS[selectedCategory!].title} / {currentSubPath.title}
-                    </span>
-                    <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-300">
-                      Question {questionIndex + 1} of {totalQuestions}
-                    </span>
-                    <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-300">
-                      {credits} credits
-                    </span>
-                    <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-300">
-                      Streak {streak}
-                    </span>
-                  </div>
-
-                  <div className="mt-6">
-                    <div className="flex items-center justify-between gap-4 text-sm text-slate-400">
-                      <span>Progress</span>
-                      <span>{Math.round(progress)}%</span>
-                    </div>
-                    <div className="mt-2 h-2 overflow-hidden rounded-full bg-white/10">
-                      <div
-                        className={`h-full rounded-full bg-gradient-to-r ${currentSubPath.gradient} transition-all duration-500`}
-                        style={{width: `${progress}%`}}
-                      />
-                    </div>
-                  </div>
-
-                  <h1 className="mt-7 text-3xl font-semibold tracking-tight text-white sm:text-4xl">
-                    {currentQuestion?.prompt}
-                  </h1>
-                  <p className="mt-4 max-w-2xl text-base leading-7 text-slate-300">
-                    Choose the best answer. Wrong answers will show a clear correction
-                    and you can try again right away.
-                  </p>
-
-                  <div className="mt-8 grid gap-3 sm:grid-cols-2">
-                    {currentQuestionOptionOrder.map((optionIndex, displayIndex) => {
-                      const option = currentQuestion?.options[optionIndex];
-                      if (!option) {
-                        return null;
-                      }
-
-                      return (
-                        <ChoiceButton
-                          key={`${optionIndex}-${option}`}
-                          label={option}
-                          index={displayIndex}
-                          selectedChoice={selectedChoice}
-                          feedback={feedback}
-                          onChoose={handleChoice}
-                        />
-                      );
-                    })}
-                  </div>
-
-                  {canRevealAnswer && (
-                    <div className="mt-4 flex flex-wrap gap-3">
-                      <button
-                        type="button"
-                        onClick={handleRevealAnswer}
-                        className="rounded-full border border-amber-300/30 bg-amber-400/10 px-5 py-3 text-sm font-semibold text-amber-50 transition hover:bg-amber-400/20"
-                      >
-                        Reveal answer
-                      </button>
-                    </div>
-                  )}
-
-                  <div
-                    aria-live="polite"
-                    className={`mt-6 rounded-3xl border p-5 ${
-                      feedback?.kind === "correct"
-                        ? "border-emerald-300/40 bg-emerald-400/10 text-emerald-50"
-                        : feedback?.kind === "wrong"
-                          ? "border-rose-300/40 bg-rose-400/10 text-rose-50"
-                          : feedback?.kind === "revealed"
-                            ? "border-amber-300/40 bg-amber-400/10 text-amber-50"
-                          : "border-white/10 bg-white/5 text-slate-200"
-                    }`}
-                  >
-                    <p className="text-sm font-semibold uppercase tracking-[0.24em] opacity-80">
-                      Coach feedback
-                    </p>
-                    <p className="mt-2 text-base leading-7">
-                      {feedback?.message ?? "Pick an answer to begin."}
-                    </p>
-                    {feedback?.kind === "correct" && (
-                      <p className="mt-3 text-sm leading-6 opacity-80">
-                        Nice work. The next question will appear automatically.
-                      </p>
-                    )}
-                    {feedback?.kind === "wrong" && (
-                      <p className="mt-3 text-sm leading-6 opacity-80">
-                        Try again. The answer is close, and your next attempt can earn
-                        more credits.
-                      </p>
-                    )}
-                    {feedback?.kind === "revealed" && (
-                      <p className="mt-3 text-sm leading-6 opacity-80">
-                        Good learning move. You can continue, but this question will not add credits now.
-                      </p>
-                    )}
-                  </div>
-                </div>
-
-                <aside className="grid gap-4">
-                  <div className="rounded-[1.75rem] border border-white/10 bg-white/5 p-6">
-                    <p className="text-sm uppercase tracking-[0.24em] text-slate-400">
-                      Learning tip
-                    </p>
-                    <p className="mt-4 text-sm leading-7 text-slate-200">
-                      {needHint ?? currentQuestion?.hint}
-                    </p>
-                  </div>
-
-                  <div className="rounded-[1.75rem] border border-white/10 bg-white/5 p-6">
-                    <p className="text-sm uppercase tracking-[0.24em] text-slate-400">
-                      Why this matters
-                    </p>
-                    <p className="mt-4 text-sm leading-7 text-slate-200">
-                      {currentQuestion?.explanation}
-                    </p>
-                  </div>
-
-                  <div className="rounded-[1.75rem] border border-white/10 bg-gradient-to-br from-white/10 to-white/5 p-6">
-                    <p className="text-sm uppercase tracking-[0.24em] text-slate-400">
-                      Credits board
-                    </p>
-                    <div className="mt-4 grid grid-cols-2 gap-3">
-                      <div className="rounded-2xl border border-white/10 bg-slate-950/60 p-4">
-                        <p className="text-xs uppercase tracking-[0.24em] text-slate-400">
-                          Credits
-                        </p>
-                        <p className="mt-2 text-2xl font-semibold text-white">
-                          {credits}
-                        </p>
-                      </div>
-                      <div className="rounded-2xl border border-white/10 bg-slate-950/60 p-4">
-                        <p className="text-xs uppercase tracking-[0.24em] text-slate-400">
-                          Streak
-                        </p>
-                        <p className="mt-2 text-2xl font-semibold text-white">
-                          {streak}
-                        </p>
-                      </div>
-                    </div>
-                    <p className="mt-4 text-sm leading-6 text-slate-300">
-                      Every third correct answer adds a bonus so the lesson stays
-                      rewarding and lively.
+                      {currentCourseRound?.title}: {currentCourseRound?.summary}
+                      {courseRoundIndex < lastCourseRoundIndex &&
+                        currentSubPath.course.rounds[courseRoundIndex + 1] &&
+                        ` Finish every question to unlock ${currentSubPath.course.rounds[courseRoundIndex + 1].title}.`}
                     </p>
                   </div>
 
