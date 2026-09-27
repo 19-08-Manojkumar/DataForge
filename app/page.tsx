@@ -1182,6 +1182,68 @@ function FireworksCelebration({burst, onDone}: {burst: FireworksState | null; on
   );
 }
 
+const JOB_ROLES = [
+  "Data Analyst",
+  "Backend Developer",
+  "Database Administrator",
+  "Data Engineer",
+  "Full-Stack Developer",
+];
+
+const JOB_RANKS = [
+  {min: 0, label: "Intern", icon: "🌱"},
+  {min: 50, label: "Junior Developer", icon: "💻"},
+  {min: 150, label: "Data Analyst", icon: "📊"},
+  {min: 300, label: "Backend Engineer", icon: "⚙️"},
+  {min: 500, label: "Senior DB Engineer", icon: "🚀"},
+];
+
+function getJobRank(credits: number) {
+  const index = JOB_RANKS.reduce((best, rank, i) => (credits >= rank.min ? i : best), 0);
+  return {current: JOB_RANKS[index], next: JOB_RANKS[index + 1] ?? null};
+}
+
+function RoleTypewriter() {
+  const [text, setText] = useState("");
+
+  useEffect(() => {
+    let role = 0;
+    let chars = 0;
+    let deleting = false;
+    let timer: number;
+    const tick = () => {
+      const word = JOB_ROLES[role];
+      chars += deleting ? -1 : 1;
+      setText(word.slice(0, chars));
+      let delay = deleting ? 40 : 90;
+      if (!deleting && chars === word.length) {
+        deleting = true;
+        delay = 1400;
+      } else if (deleting && chars === 0) {
+        deleting = false;
+        role = (role + 1) % JOB_ROLES.length;
+        delay = 300;
+      }
+      timer = window.setTimeout(tick, delay);
+    };
+    timer = window.setTimeout(tick, 400);
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  return (
+    <span className="grid bg-gradient-to-r from-cyan-400 via-sky-500 to-fuchsia-500 bg-clip-text text-transparent">
+      {/* Invisible longest role reserves the space so the layout never jumps while typing. */}
+      <span aria-hidden className="invisible col-start-1 row-start-1">
+        Database Administrator|
+      </span>
+      <span className="col-start-1 row-start-1">
+        {text}
+        <span className="caret-blink">|</span>
+      </span>
+    </span>
+  );
+}
+
 export default function Home() {
   const [selectedCategory, setSelectedCategory] = useState<CategoryKey | null>(null);
   const [selectedSubPath, setSelectedSubPath] = useState<SubPathKey | null>(null);
@@ -1687,8 +1749,8 @@ export default function Home() {
 
       <main className="relative min-h-screen overflow-hidden bg-[#07111d] px-4 py-6 text-slate-100 sm:px-6 lg:px-10">
         <div className="pointer-events-none absolute inset-0">
-          <div className="absolute left-[-6rem] top-[-5rem] h-72 w-72 rounded-full bg-cyan-400/15 blur-3xl" />
-          <div className="absolute right-[-6rem] top-20 h-80 w-80 rounded-full bg-fuchsia-500/10 blur-3xl" />
+          <div className="absolute orb-float left-[-6rem] top-[-5rem] h-72 w-72 rounded-full bg-cyan-400/15 blur-3xl" />
+          <div className="absolute orb-float orb-float-slow right-[-6rem] top-20 h-80 w-80 rounded-full bg-fuchsia-500/10 blur-3xl" />
           <div className="absolute bottom-[-7rem] left-1/2 h-80 w-80 -translate-x-1/2 rounded-full bg-sky-500/10 blur-3xl" />
           <div className="absolute inset-0 bg-[linear-gradient(rgba(148,163,184,0.04)_1px,transparent_1px),linear-gradient(90deg,rgba(148,163,184,0.04)_1px,transparent_1px)] bg-[size:32px_32px] opacity-30" />
         </div>
@@ -1701,8 +1763,11 @@ export default function Home() {
                   Interactive database trainer
                 </span>
                 <h1 className="mt-6 text-4xl font-semibold tracking-tight text-white sm:text-5xl lg:text-6xl">
-                  Pick SQL or NoSQL, then choose the exact database you want to master.
+                  Practice real queries. Land a job as a <RoleTypewriter />
                 </h1>
+                <p className="mt-4 text-lg font-medium text-slate-200">
+                  Pick SQL or NoSQL, choose your database, and level up from Intern to Senior DB Engineer.
+                </p>
                 <p className="mt-5 max-w-xl text-base leading-7 text-slate-300 sm:text-lg">
                   Students first choose the data model, then the database flavor.
                   After that the lesson becomes a guided quiz with instant feedback,
@@ -1717,6 +1782,9 @@ export default function Home() {
                   </span>
                   <span className="rounded-full border border-white/10 bg-white/5 px-4 py-2">
                     Step 3: answer and earn credits
+                  </span>
+                  <span className="rounded-full border border-amber-300/30 bg-amber-400/10 px-4 py-2 text-amber-100">
+                    🎯 Interview-style questions
                   </span>
                 </div>
               </div>
@@ -2156,7 +2224,13 @@ export default function Home() {
                       {credits} credits
                     </span>
                     <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-300">
-                      Streak {streak}
+                      {streak >= 3 ? "🔥" : "⚡"} Streak {streak}
+                    </span>
+                    <span className="rank-chip rounded-full border border-amber-300/30 bg-amber-400/10 px-3 py-1 text-xs font-medium text-amber-100">
+                      {getJobRank(credits).current.icon} {getJobRank(credits).current.label}
+                      {getJobRank(credits).next
+                        ? ` · ${getJobRank(credits).next!.min - credits} credits to ${getJobRank(credits).next!.label}`
+                        : " · Top rank!"}
                     </span>
                   </div>
 
@@ -2167,7 +2241,7 @@ export default function Home() {
                     </div>
                     <div className="mt-2 h-2 overflow-hidden rounded-full bg-white/10">
                       <div
-                        className={`h-full rounded-full bg-gradient-to-r ${currentSubPath.gradient} transition-all duration-500`}
+                        className={`progress-shimmer h-full rounded-full bg-gradient-to-r ${currentSubPath.gradient} transition-all duration-500`}
                         style={{width: `${progress}%`}}
                       />
                     </div>
