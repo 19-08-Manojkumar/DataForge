@@ -1787,6 +1787,22 @@ export default function Home() {
                     🎯 Interview-style questions
                   </span>
                 </div>
+
+                <div className="mt-8 rounded-[1.5rem] border border-violet-300/20 bg-violet-400/5 p-4 sm:p-5">
+                  <p className="text-xs font-semibold uppercase tracking-[0.28em] text-violet-200">
+                    Other area to study here
+                  </p>
+                  <p className="mt-3 text-base font-medium text-slate-100">
+                    Data Analytics & Data Science
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => window.open("https://data-science-forge.vercel.app/", "_blank", "noopener,noreferrer")}
+                    className="mt-4 inline-flex items-center justify-center rounded-full bg-gradient-to-r from-violet-400 via-fuchsia-500 to-sky-500 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:brightness-110"
+                  >
+                    Open Data Analytics & Data Science
+                  </button>
+                </div>
               </div>
 
               <div className="grid gap-4">
